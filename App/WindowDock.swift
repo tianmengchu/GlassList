@@ -17,6 +17,7 @@ enum DockEdge: String, CaseIterable, Identifiable {
 final class WindowDock: NSObject {
     static let autoDockAtLaunchKey = "autoDockAtLaunch"
     private static let lastDockEdgeKey = "lastDockEdge"
+    private static let listSize = NSSize(width: 350, height: 600)
 
     private(set) var edge: DockEdge?
     @ObservationIgnored private weak var window: NSWindow?
@@ -225,7 +226,7 @@ final class WindowDock: NSObject {
 
     private func makeList(model: TaskListModel, settings: ReminderShortcutSettings) -> DockListPanel {
         let panel = DockListPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 350, height: 400),
+            contentRect: NSRect(origin: .zero, size: Self.listSize),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -260,8 +261,8 @@ final class WindowDock: NSObject {
         tab.setFrameOrigin(NSPoint(x: tabX, y: centerY - tabSize.height / 2))
 
         let gap: CGFloat = 5
-        let width = min(350, area.width - tabSize.width - gap)
-        let height = min(400, area.height)
+        let width = min(Self.listSize.width, area.width - tabSize.width - gap)
+        let height = min(Self.listSize.height, area.height)
         let x = edge == .left ? tab.frame.maxX + gap : tab.frame.minX - width - gap
         let y = min(area.maxY - height, max(area.minY, centerY - height / 2))
         expandedFrame = NSRect(x: x, y: y, width: width, height: height)
