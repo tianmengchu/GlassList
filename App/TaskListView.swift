@@ -26,6 +26,7 @@ private enum ListFilter: String, CaseIterable, Identifiable {
 
 struct TaskListView: View {
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.calendar) private var calendar
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(ReminderShortcutSettings.self) private var detailSettings
@@ -39,6 +40,8 @@ struct TaskListView: View {
     @State private var editTask: Todo?
     @State private var showNewTask = false
     @State private var showingSettings = false
+    @State private var showMoveError = false
+    @State private var dates = TaskDatePresentation()
     @FocusState private var composerFocused: Bool
 
     private var isDark: Bool { scheme == .dark }
@@ -62,21 +65,26 @@ struct TaskListView: View {
 
     var body: some View {
         @Bindable var model = model
-        HStack(spacing: 0) {
-            sidebar
-                .frame(width: 210)
-            Rectangle()
-                .fill(.primary.opacity(0.08))
-                .frame(width: 1)
-                .accessibilityHidden(true)
-            Group {
-                if showingSettings {
-                    settingsPanel
-                } else {
-                    mainPanel
+        TimelineView(.everyMinute) { context in
+            let now = context.date
+            let visible = visibleTasks(at: now)
+            let groups = TaskDateGroup.groups(for: visible, now: now, calendar: calendar, additionalDay: dates.additionalDay)
+            HStack(spacing: 0) {
+                sidebar(groups: groups, now: now)
+                    .frame(width: 210)
+                Rectangle()
+                    .fill(.primary.opacity(0.08))
+                    .frame(width: 1)
+                    .accessibilityHidden(true)
+                Group {
+                    if showingSettings {
+                        settingsPanel
+                    } else {
+                        mainPanel(tasks: visible, groups: groups, now: now)
+                    }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .background {
             DockWindowAccess(controller: windowDock, model: model, settings: detailSettings)
@@ -101,13 +109,13 @@ struct TaskListView: View {
             if url.host == GlassList.newTaskURL.host { showNewTask = true }
         }
         .sheet(item: $editTask) { task in
-            TaskEditor(task: task) { title, date, note in
-                model.saveTask(id: task.id, title: title, reminder: date, note: note)
+            TaskEditor(task: task) { title, reminder, day, note in
+                model.saveTask(id: task.id, title: title, reminder: reminder, day: day, note: note)
             }
         }
         .sheet(isPresented: $showNewTask) {
-            TaskEditor(draft: draft) { title, date, note in
-                guard model.saveTask(id: nil, title: title, reminder: date, note: note) else { return false }
+            TaskEditor(draft: draft) { title, reminder, day, note in
+                guard model.saveTask(id: nil, title: title, reminder: reminder, day: day, note: note) else { return false }
                 draft = ""
                 if filter == .completed { filter = .pending }
                 return true
@@ -118,11 +126,16 @@ struct TaskListView: View {
         } message: {
             Text("暂时无法写入本地清单。请稍后重试。")
         }
+        .alert("无法更改待办日期", isPresented: $showMoveError) {
+            Button("好", role: .cancel) {}
+        } message: {
+            Text("请选择其他日期，或稍后再试。")
+        }
         .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: filter)
         .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: model.tasks)
     }
 
-    private var sidebar: some View {
+    private func sidebar(groups: [TaskDateGroup], now: Date) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 11) {
                 Image(systemName: "checkmark")
@@ -134,7 +147,7 @@ struct TaskListView: View {
                 Text("浮光清单")
                     .font(.system(size: 16, weight: .semibold))
             }
-            .padding(.bottom, 32)
+            .padding(.bottom, 23)
 
             VStack(spacing: 4) {
                 ForEach(ListFilter.allCases) { item in
@@ -142,15 +155,86 @@ struct TaskListView: View {
                 }
             }
 
-            Spacer(minLength: 20)
+            dateSidebar(groups: groups, now: now)
+                .padding(.top, 12)
+                .padding(.bottom, 10)
             progressCard
             appearancePicker
-                .padding(.top, 20)
+                .padding(.top, 13)
         }
         .padding(.horizontal, 20)
-        .padding(.top, 52)
-        .padding(.bottom, 24)
+        .padding(.top, 48)
+        .padding(.bottom, 18)
         .background(sidebarFill)
+    }
+
+    private func dateSidebar(groups: [TaskDateGroup], now: Date) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Divider()
+            Text("日期")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .accessibilityAddTraits(.isHeader)
+                .padding(.horizontal, 8)
+            ScrollViewReader { scroll in
+                ScrollView {
+                    LazyVStack(spacing: 2) {
+                        ForEach(groups) { group in
+                            dateSidebarRow(group, now: now)
+                                .id(group.id)
+                        }
+                    }
+                    .padding(1)
+                }
+                .onChange(of: dates.jump) { _, jump in
+                    if let jump { scroll.scrollTo(jump.group) }
+                }
+            }
+            .frame(maxHeight: .infinity)
+        }
+    }
+
+    private func dateSidebarRow(_ group: TaskDateGroup, now: Date) -> some View {
+        let selected = dates.jump?.group == group.id && !showingSettings
+        return Button {
+            showingSettings = false
+            dates.reveal(group.id)
+        } label: {
+            HStack(spacing: 7) {
+                Image(systemName: group.id == .unscheduled ? "tray" : "calendar")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(selected ? accent : .secondary)
+                    .frame(width: 14)
+                    .accessibilityHidden(true)
+                Text(group.title(at: now, calendar: calendar, abbreviated: true))
+                    .font(.system(size: 13, weight: .semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                Spacer(minLength: 2)
+                Text(group.tasks.count, format: .number)
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+            }
+            .padding(.horizontal, 8)
+            .frame(height: 27)
+            .background(accent.opacity(selected ? 0.14 : 0), in: .rect(cornerRadius: 8))
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+        .accessibilityValue("\(group.tasks.count) 项")
+        .help(group.dropHelp)
+        .taskDateDropTarget(tint: accent) { id in moveTask(id, to: group.id) }
+    }
+
+    private func moveTask(_ id: UUID, to group: TaskDateGroup.ID) {
+        let moved = model.moveTask(id, to: group.day, calendar: calendar)
+        showMoveError = !moved
+        if moved {
+            showingSettings = false
+            dates.reveal(group)
+        }
     }
 
     private var appearancePicker: some View {
@@ -190,6 +274,7 @@ struct TaskListView: View {
         return Button {
             filter = item
             showingSettings = false
+            dates.clearJump()
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: item.symbol)
@@ -203,7 +288,7 @@ struct TaskListView: View {
             }
             .font(.system(size: 13, weight: selected ? .semibold : .medium))
             .padding(.horizontal, 13)
-            .frame(height: 38)
+            .frame(height: 34)
             .contentShape(.rect(cornerRadius: 13))
             .background(accent.opacity(selected ? 0.13 : 0), in: .rect(cornerRadius: 13))
         }
@@ -244,13 +329,11 @@ struct TaskListView: View {
         .accessibilityElement(children: .combine)
     }
 
-    private var mainPanel: some View {
+    private func mainPanel(tasks: [Todo], groups: [TaskDateGroup], now: Date) -> some View {
         VStack(alignment: .leading, spacing: 18) {
-            header
-            TimelineView(.everyMinute) { context in
-                listContent(visibleTasks(at: context.date))
-            }
-            .frame(maxHeight: .infinity)
+            header(now: now)
+            listContent(tasks, groups: groups, now: now)
+                .frame(maxHeight: .infinity)
             composer
         }
         .padding(.horizontal, 32)
@@ -275,10 +358,10 @@ struct TaskListView: View {
     }
 
     @ViewBuilder
-    private func listContent(_ visibleTasks: [Todo]) -> some View {
+    private func listContent(_ visibleTasks: [Todo], groups: [TaskDateGroup], now: Date) -> some View {
         if model.loadFailed {
             emptyState(symbol: "exclamationmark", title: "清单暂不可用", detail: "请返回应用后再试一次。")
-        } else if visibleTasks.isEmpty {
+        } else if visibleTasks.isEmpty && dates.jump == nil {
             switch filter {
             case .pending:
                 if model.tasks.isEmpty {
@@ -292,26 +375,20 @@ struct TaskListView: View {
                 emptyState(symbol: "checkmark", title: "清单还是空的", detail: "在下方添加你的第一条待办。")
             }
         } else {
-            ScrollView {
-                LazyVStack(spacing: 6) {
-                    ForEach(visibleTasks) { task in
-                        taskRow(task)
-                    }
-                }
-                .padding(.vertical, 1)
+            TaskDateSections(groups: groups, now: now, tint: accent, dates: $dates) { id, group in
+                moveTask(id, to: group)
+            } row: { task in
+                taskRow(task)
             }
-            .defaultScrollAnchor(.top)
         }
     }
 
-    private var header: some View {
+    private func header(now: Date) -> some View {
         HStack(alignment: .bottom) {
             VStack(alignment: .leading, spacing: 6) {
-                TimelineView(.everyMinute) { context in
-                    Text(context.date, format: dateFormat)
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(accent)
-                }
+                Text(now, format: dateFormat)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(accent)
                 Text(filter.rawValue)
                     .font(.system(size: 36, weight: .semibold))
                     .accessibilityAddTraits(.isHeader)
@@ -383,17 +460,19 @@ struct TaskListView: View {
 
             VStack(alignment: .leading, spacing: 5) {
                 Text(task.title)
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.system(size: 15, weight: .semibold))
                     .strikethrough(task.isDone)
                     .foregroundStyle(task.isDone ? .secondary : .primary)
                     .fixedSize(horizontal: false, vertical: true)
                     .onTapGesture(count: 2) { editTask = task }
                 HStack(spacing: 7) {
-                    DetailTag(symbol: "clock", tint: detailSettings.colors.time.swatch) {
+                    DetailTag(symbol: task.reminderAt == nil ? "calendar" : "clock", tint: detailSettings.colors.time.swatch) {
                         if let time = task.reminderAt {
                             Text(time, format: .dateTime.year().month(.defaultDigits).day().hour().minute())
+                        } else if let day = task.scheduledDay {
+                            Text(day, format: .dateTime.year().month(.defaultDigits).day())
                         } else {
-                            Text("未设置时间")
+                            Text("未安排日期")
                         }
                     }
                     .layoutPriority(1)

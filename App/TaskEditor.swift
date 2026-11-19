@@ -2,32 +2,49 @@ import AppKit
 import SwiftUI
 
 struct TaskEditor: View {
+    private enum DockPicker { case calendar, time }
+
     @Environment(\.dismiss) private var dismiss
     @Environment(\.calendar) private var calendar
     @Environment(\.colorScheme) private var colorScheme
     @Environment(ReminderShortcutSettings.self) private var shortcuts
     @FocusState private var titleFocused: Bool
+    @FocusState private var noteFocused: Bool
 
     let task: Todo?
-    let save: (String, Date?, String) -> Bool
+    let save: (String, Date?, Date?, String) -> Bool
+    private let closeDockEditor: (() -> Void)?
 
     @State private var title: String
     @State private var note: String
+    @State private var setsDate: Bool
     @State private var setsTime: Bool
     @State private var date: Date
     @State private var hour: String
     @State private var minute: String
     @State private var error: String?
+    @State private var dockPicker: DockPicker?
 
-    init(task: Todo? = nil, draft: String = "", save: @escaping (String, Date?, String) -> Bool) {
+    init(task: Todo? = nil, draft: String = "", closeDockEditor: (() -> Void)? = nil,
+         save: @escaping (String, Date?, Date?, String) -> Bool) {
         self.task = task
         self.save = save
+        self.closeDockEditor = closeDockEditor
         _title = State(initialValue: task?.title ?? draft)
         _note = State(initialValue: task?.note ?? "")
-        _setsTime = State(initialValue: task == nil || task?.reminderAt != nil)
-        let initial = task?.reminderAt ?? .now.addingTimeInterval(3_600)
-        let clock = Calendar.current.dateComponents([.hour, .minute], from: initial)
-        _date = State(initialValue: initial)
+        _setsDate = State(initialValue: task == nil || task?.scheduledDate != nil)
+        _setsTime = State(initialValue: task?.reminderAt != nil || (task == nil && closeDockEditor == nil))
+        let now = Date.now
+        let initial = task?.reminderAt ?? now.addingTimeInterval(3_600)
+        let calendar = Calendar.current
+        let initialClock: Date
+        if closeDockEditor != nil, task == nil, let today = calendar.dateInterval(of: .day, for: now) {
+            initialClock = min(initial, today.end.addingTimeInterval(-60))
+        } else {
+            initialClock = initial
+        }
+        let clock = calendar.dateComponents([.hour, .minute], from: initialClock)
+        _date = State(initialValue: task?.scheduledDate ?? (closeDockEditor == nil ? initial : now))
         _hour = State(initialValue: Self.twoDigits(clock.hour ?? 0))
         _minute = State(initialValue: Self.twoDigits(clock.minute ?? 0))
     }
@@ -38,61 +55,115 @@ struct TaskEditor: View {
             : Color(red: 0.13, green: 0.41, blue: 0.36)
     }
 
+    private var isDockEditor: Bool { closeDockEditor != nil }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text(task == nil ? "新建待办" : "编辑待办")
-                .font(.title2.bold())
-            titleField
-
-            datePanel
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text("备注").font(.headline)
-                TextEditor(text: $note)
-                    .font(.body)
-                    .frame(height: 62)
-                    .padding(5)
-                    .overlay { RoundedRectangle(cornerRadius: 6).strokeBorder(.quaternary) }
-                    .accessibilityLabel("备注")
+        Group {
+            if isDockEditor {
+                VStack(alignment: .leading, spacing: 9) {
+                    heading
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 10) {
+                            titleField
+                            dockDatePanel
+                            noteField
+                        }
+                        .padding(1)
+                    }
+                    .frame(maxHeight: .infinity)
+                    actionBar
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            } else {
+                VStack(alignment: .leading, spacing: 16) {
+                    heading
+                    titleField
+                    datePanel
+                    noteField
+                    actionBar
+                }
+                .padding(24)
+                .frame(width: 660)
             }
+        }
+        .onAppear { titleFocused = task == nil }
+        .onChange(of: hour) { error = nil }
+        .onChange(of: minute) { error = nil }
+        .onChange(of: date) { error = nil }
+        .onChange(of: setsDate) { _, isScheduled in
+            if !isScheduled {
+                setsTime = false
+                dockPicker = nil
+            }
+            error = nil
+        }
+        .onChange(of: setsTime) { error = nil }
+    }
 
+    private var heading: some View {
+        Text(task == nil ? "新建待办" : "编辑待办")
+            .font(isDockEditor ? .headline : .title2.bold())
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    private var noteField: some View {
+        let editor = TextEditor(text: $note)
+            .font(.body)
+            .frame(height: isDockEditor ? 52 : 62)
+            .accessibilityLabel("备注")
+        return VStack(alignment: .leading, spacing: 6) {
+            Text("备注").font(isDockEditor ? .subheadline.weight(.semibold) : .headline)
+            if isDockEditor {
+                editor
+                    .scrollContentBackground(.hidden)
+                    .focused($noteFocused)
+                    .padding(5)
+                    .dockInputSurface(tint: accent, focused: noteFocused)
+            } else {
+                editor.padding(5)
+                    .overlay { RoundedRectangle(cornerRadius: 6).strokeBorder(.quaternary) }
+            }
+        }
+    }
+
+    private var actionBar: some View {
+        VStack(alignment: .leading, spacing: 8) {
             if let error {
                 Text(error).font(.caption).foregroundStyle(.red)
             }
             HStack {
                 Spacer()
-                Button("取消") { dismiss() }
+                Button("取消", action: close)
                     .keyboardShortcut(.cancelAction)
                 Button("保存", action: commit)
                     .keyboardShortcut(.defaultAction)
                     .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
-        .padding(24)
-        .frame(width: 660)
-        .onAppear { titleFocused = task == nil }
-        .onChange(of: hour) { error = nil }
-        .onChange(of: minute) { error = nil }
     }
 
     private var titleField: some View {
-        VStack(alignment: .leading, spacing: 7) {
+        let field = TextField("写下要做的事", text: $title)
+            .textFieldStyle(.plain)
+            .font(.system(size: isDockEditor ? 15 : 18, weight: .semibold))
+            .padding(.horizontal, isDockEditor ? 9 : 13)
+            .frame(height: isDockEditor ? 35 : 45)
+            .focused($titleFocused)
+            .accessibilityLabel("待办标题")
+        return VStack(alignment: .leading, spacing: 7) {
             Text("待办标题")
                 .font(.system(size: 13, weight: .semibold))
                 .accessibilityHidden(true)
-            TextField("写下要做的事", text: $title)
-                .textFieldStyle(.plain)
-                .font(.system(size: 18, weight: .semibold))
-                .padding(.horizontal, 13)
-                .frame(height: 45)
-                .background(.background, in: .rect(cornerRadius: 10))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 10)
-                        .strokeBorder(accent.opacity(titleFocused ? 0.85 : 0.33), lineWidth: titleFocused ? 1.5 : 1)
-                        .allowsHitTesting(false)
-                }
-                .focused($titleFocused)
-                .accessibilityLabel("待办标题")
+            if isDockEditor {
+                field.dockInputSurface(tint: accent, focused: titleFocused)
+            } else {
+                field.background(.background, in: .rect(cornerRadius: 10))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 10)
+                            .strokeBorder(accent.opacity(titleFocused ? 0.85 : 0.33), lineWidth: titleFocused ? 1.5 : 1)
+                            .allowsHitTesting(false)
+                    }
+            }
         }
     }
 
@@ -102,15 +173,17 @@ struct TaskEditor: View {
                 Label("日期与时间", systemImage: "calendar")
                     .font(.headline)
                 Spacer()
+                Toggle("安排日期", isOn: $setsDate).toggleStyle(.switch)
                 Toggle("提醒", isOn: $setsTime).toggleStyle(.switch)
+                    .disabled(!setsDate)
             }
             HStack(alignment: .top, spacing: 14) {
                 ReminderCalendar(selection: $date, accent: accent)
                     .padding(12)
                     .background(.background.opacity(0.6), in: .rect(cornerRadius: 14))
                     .frame(width: 322)
-                    .disabled(!setsTime)
-                    .opacity(setsTime ? 1 : 0.42)
+                    .disabled(!setsDate)
+                    .opacity(setsDate ? 1 : 0.42)
 
                 VStack(alignment: .leading, spacing: 12) {
                     clockPanel
@@ -118,14 +191,7 @@ struct TaskEditor: View {
                     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 5) {
                         ForEach(shortcuts.items) { shortcut in
                             Button {
-                                if let chosen = shortcut.date(from: .now) {
-                                    setsTime = true
-                                    date = chosen
-                                    let clock = calendar.dateComponents([.hour, .minute], from: chosen)
-                                    hour = Self.twoDigits(clock.hour ?? 0)
-                                    minute = Self.twoDigits(clock.minute ?? 0)
-                                    error = nil
-                                }
+                                applyShortcut(shortcut)
                             } label: {
                                 Text(shortcut.title)
                                     .font(.system(size: 12, weight: .medium))
@@ -148,8 +214,162 @@ struct TaskEditor: View {
         .padding(14)
         .background(accent.opacity(0.065), in: .rect(cornerRadius: 16))
         .overlay { RoundedRectangle(cornerRadius: 16).strokeBorder(accent.opacity(0.16)).allowsHitTesting(false) }
-        .onChange(of: date) { error = nil }
-        .onChange(of: setsTime) { error = nil }
+    }
+
+    private var dockDatePanel: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Menu(dockDateLabel, systemImage: "calendar") {
+                    Button("今天") { selectDockDate(.now) }
+                    Button("明天") {
+                        if let tomorrow = calendar.date(byAdding: .day, value: 1, to: .now) {
+                            selectDockDate(tomorrow)
+                        }
+                    }
+                    Button("选择其他日期…") { dockPicker = dockPicker == .calendar ? nil : .calendar }
+                    Divider()
+                    Button("不安排日期") {
+                        setsDate = false
+                        dockPicker = nil
+                    }
+                }
+                .menuStyle(.borderlessButton)
+                .accessibilityLabel("日期")
+                .accessibilityValue(dockDateLabel)
+
+                Divider().frame(height: 15)
+                Button(dockTimeLabel, systemImage: "clock", action: toggleDockClock)
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel("提醒时间")
+                    .accessibilityValue(dockTimeLabel)
+
+                Spacer(minLength: 0)
+                if !shortcuts.items.isEmpty {
+                    Menu("快捷", systemImage: "bolt") {
+                        ForEach(shortcuts.items) { shortcut in
+                            Button(shortcut.title) { applyShortcut(shortcut) }
+                        }
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                    .accessibilityLabel("快捷时间")
+                }
+            }
+            .controlSize(.small)
+            .padding(.horizontal, 9)
+            .frame(minHeight: 35)
+            .dockInputSurface(tint: accent)
+
+            switch dockPicker {
+            case .calendar:
+                ReminderCalendar(selection: Binding(get: { date }, set: selectDockDate), accent: accent)
+                    .padding(8)
+                    .dockInputSurface(tint: accent)
+            case .time:
+                dockClockEditor
+            case nil:
+                EmptyView()
+            }
+        }
+    }
+
+    private var dockDateLabel: String {
+        guard setsDate else { return "未安排日期" }
+        if calendar.isDateInToday(date) { return "今天" }
+        if calendar.isDateInTomorrow(date) { return "明天" }
+        let chinese = Locale(identifier: "zh_CN")
+        if calendar.isDate(date, equalTo: .now, toGranularity: .year) {
+            return date.formatted(.dateTime.month().day().locale(chinese))
+        }
+        return date.formatted(.dateTime.year().month().day().locale(chinese))
+    }
+
+    private var dockTimeLabel: String {
+        guard setsTime else { return "不设时间" }
+        let h = Int(hour).map(Self.twoDigits) ?? "--"
+        let m = Int(minute).map(Self.twoDigits) ?? "--"
+        return "\(h):\(m)"
+    }
+
+    private func selectDockDate(_ day: Date) {
+        date = day
+        setsDate = true
+        dockPicker = nil
+    }
+
+    private func toggleDockClock() {
+        dockPicker = dockPicker == .time ? nil : .time
+    }
+
+    private func enableDockTime() {
+        if !setsDate {
+            date = .now
+            setsDate = true
+        }
+        setsTime = true
+    }
+
+    private var dockClockEditor: some View {
+        HStack(spacing: 8) {
+            HStack(spacing: 0) {
+                dockClockField("小时", value: $hour)
+                Text(":")
+                    .frame(width: ClockScrollMonitor.separatorWidth)
+                    .accessibilityHidden(true)
+                dockClockField("分钟", value: $minute)
+            }
+            .background {
+                ClockScrollMonitor(enabled: true) { column, steps in
+                    adjustClock(column, steps: steps)
+                    enableDockTime()
+                }
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+            }
+            .help("输入时间，或把指针放在小时、分钟上滚动")
+
+            Spacer(minLength: 0)
+            Button("清除") {
+                setsTime = false
+                dockPicker = nil
+            }
+            .buttonStyle(.borderless)
+            Button("完成") {
+                enableDockTime()
+                dockPicker = nil
+            }
+            .buttonStyle(.borderless)
+        }
+        .controlSize(.small)
+        .padding(8)
+        .dockInputSurface(tint: accent)
+    }
+
+    private func dockClockField(_ label: String, value: Binding<String>) -> some View {
+        TextField("00", text: value)
+            .textFieldStyle(.plain)
+            .font(.system(size: 15, weight: .semibold, design: .monospaced))
+            .multilineTextAlignment(.center)
+            .frame(width: 35, height: 26)
+            .background(accent.opacity(0.1), in: .rect(cornerRadius: 6))
+            .accessibilityLabel(label)
+            .onChange(of: value.wrappedValue) { _, input in
+                let normalized = ClockWheel.normalizedInput(input)
+                if normalized != input { value.wrappedValue = normalized }
+                if !normalized.isEmpty { enableDockTime() }
+            }
+    }
+
+    private func applyShortcut(_ shortcut: ReminderShortcut) {
+        guard let chosen = shortcut.date(from: .now) else { return }
+        setsDate = true
+        setsTime = true
+        date = chosen
+        let clock = calendar.dateComponents([.hour, .minute], from: chosen)
+        hour = Self.twoDigits(clock.hour ?? 0)
+        minute = Self.twoDigits(clock.minute ?? 0)
+        dockPicker = nil
+        error = nil
     }
 
     private var clockPanel: some View {
@@ -169,29 +389,35 @@ struct TaskEditor: View {
                     .frame(maxWidth: .infinity)
             }
             .background(alignment: .top) {
-                ClockScrollMonitor(enabled: setsTime) { column, steps in
-                    switch column {
-                    case .hour: hour = ClockWheel.adjusted(hour, by: steps, count: 24)
-                    case .minute: minute = ClockWheel.adjusted(minute, by: steps, count: 60)
-                    }
-                }
-                .frame(height: ClockWheel.faceHeight)
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
+                ClockScrollMonitor(enabled: setsDate && setsTime, adjust: adjustClock)
+                    .frame(height: ClockWheel.faceHeight)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
             }
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.background.opacity(0.6), in: .rect(cornerRadius: 14))
-        .disabled(!setsTime)
-        .opacity(setsTime ? 1 : 0.42)
+        .disabled(!setsDate || !setsTime)
+        .opacity(setsDate && setsTime ? 1 : 0.42)
+    }
+
+    private func adjustClock(_ column: ClockScrollMonitor.Column, steps: Int) {
+        switch column {
+        case .hour: hour = ClockWheel.adjusted(hour, by: steps, count: 24)
+        case .minute: minute = ClockWheel.adjusted(minute, by: steps, count: 60)
+        }
     }
 
     private static func twoDigits(_ value: Int) -> String { String(format: "%02d", value) }
 
+    private func close() {
+        if let closeDockEditor { closeDockEditor() } else { dismiss() }
+    }
+
     private func commit() {
         let reminder: Date?
-        if setsTime {
+        if setsDate && setsTime {
             guard let hour = Int(hour), (0...23).contains(hour),
                   let minute = Int(minute), (0...59).contains(minute) else {
                 error = "请输入有效的时间（00:00 至 23:59）。"
@@ -221,8 +447,9 @@ struct TaskEditor: View {
             reminder = nil
         }
 
-        if save(title, reminder, note) {
-            dismiss()
+        let day = setsDate && reminder == nil ? calendar.startOfDay(for: date) : nil
+        if save(title, reminder, day, note) {
+            close()
         } else {
             error = "暂时无法保存待办，请重试。"
         }
@@ -256,9 +483,7 @@ private struct ClockWheel: View {
                     .background(tint.opacity(0.13), in: .rect(cornerRadius: 7))
                     .accessibilityLabel(label)
                     .onChange(of: value) { _, input in
-                        let digits = input.compactMap(\.wholeNumberValue)
-                            .filter { (0...9).contains($0) }
-                        let normalized = digits.prefix(2).map(String.init).joined()
+                        let normalized = Self.normalizedInput(input)
                         if normalized != input { value = normalized }
                     }
                 neighbor(1)
@@ -319,6 +544,11 @@ private struct ClockWheel: View {
     }
 
     private func wrapped(_ number: Int) -> Int { (number % count + count) % count }
+
+    static func normalizedInput(_ input: String) -> String {
+        let digits = input.compactMap(\.wholeNumberValue).filter { (0...9).contains($0) }
+        return digits.prefix(2).map(String.init).joined()
+    }
 
     static func adjusted(_ value: String, by step: Int, count: Int) -> String {
         let current = max(0, min(count - 1, Int(value) ?? 0))

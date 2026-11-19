@@ -25,7 +25,7 @@ final class WindowDock: NSObject {
     @ObservationIgnored private weak var model: TaskListModel?
     @ObservationIgnored private weak var settings: ReminderShortcutSettings?
     @ObservationIgnored private var tab: NSPanel?
-    @ObservationIgnored private var list: NSPanel?
+    @ObservationIgnored private var list: DockListPanel?
     @ObservationIgnored private var pointerTimer: Timer?
     @ObservationIgnored private var motionTimer: Timer?
     @ObservationIgnored private var expanded = false
@@ -223,8 +223,8 @@ final class WindowDock: NSObject {
         return panel
     }
 
-    private func makeList(model: TaskListModel, settings: ReminderShortcutSettings) -> NSPanel {
-        let panel = NSPanel(
+    private func makeList(model: TaskListModel, settings: ReminderShortcutSettings) -> DockListPanel {
+        let panel = DockListPanel(
             contentRect: NSRect(x: 0, y: 0, width: 350, height: 400),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
@@ -238,7 +238,12 @@ final class WindowDock: NSObject {
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = true
-        let hosting = NSHostingView(rootView: DockTaskList(model: model, settings: settings))
+        let hosting = NSHostingView(rootView: DockTaskList(
+            model: model, settings: settings,
+            draftEditingChanged: { [weak panel] in panel?.hasFocusedDraft = $0 },
+            datePickerVisibilityChanged: { [weak panel] in panel?.isChoosingDate = $0 },
+            editorVisibilityChanged: { [weak panel] in panel?.isEditingTask = $0 }
+        ))
         hosting.sizingOptions = []
         panel.contentView = hosting
         return panel
@@ -273,7 +278,8 @@ final class WindowDock: NSObject {
             keepVisibleUntil = 0
             cursorLeftAt = nil
             if !expanded { reveal() }
-        } else if now < keepVisibleUntil || openMenus > 0 || NSEvent.pressedMouseButtons != 0 {
+        } else if now < keepVisibleUntil || openMenus > 0 || NSEvent.pressedMouseButtons != 0
+                    || (list.isKeyWindow && (list.hasFocusedDraft || list.isEditingTask)) || list.isChoosingDate {
             cursorLeftAt = nil
         } else if let cursorLeftAt {
             if expanded && now - cursorLeftAt >= 0.15 {
@@ -337,6 +343,7 @@ final class WindowDock: NSObject {
         revealFraction = 0
         cursorLeftAt = nil
         keepVisibleUntil = 0
+        list?.isChoosingDate = false
         list?.orderOut(nil)
     }
 
@@ -371,6 +378,15 @@ final class WindowDock: NSObject {
 }
 
 private final class DockTabPanel: NSPanel {}
+
+private final class DockListPanel: NSPanel {
+    var hasFocusedDraft = false
+    var isChoosingDate = false
+    var isEditingTask = false
+
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { false }
+}
 
 struct DockWindowAccess: NSViewRepresentable {
     let controller: WindowDock

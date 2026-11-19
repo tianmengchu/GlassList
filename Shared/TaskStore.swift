@@ -7,7 +7,10 @@ struct Todo: Codable, Identifiable, Equatable, Sendable {
     var isDone: Bool
     var completedAt: Date?
     var reminderAt: Date?
+    var scheduledDay: Date?
     var note: String?
+
+    var scheduledDate: Date? { reminderAt ?? scheduledDay }
 
     init(_ title: String, id: UUID = UUID(), isDone: Bool = false) {
         self.id = id
@@ -19,6 +22,29 @@ struct Todo: Codable, Identifiable, Equatable, Sendable {
         guard isDone != done else { return }
         isDone = done
         completedAt = done ? date : nil
+    }
+
+    @discardableResult
+    mutating func move(to day: Date?, calendar: Calendar) -> Bool {
+        guard let day else {
+            scheduledDay = nil
+            reminderAt = nil
+            return true
+        }
+        if let scheduledDate, calendar.isDate(scheduledDate, inSameDayAs: day) { return true }
+        guard let reminderAt else {
+            scheduledDay = calendar.startOfDay(for: day)
+            return true
+        }
+
+        let clock = calendar.dateComponents([.hour, .minute, .second], from: reminderAt)
+        guard let hour = clock.hour, let minute = clock.minute, let second = clock.second,
+              let moved = calendar.date(bySettingHour: hour, minute: minute, second: second,
+                                        of: day, matchingPolicy: .strict),
+              calendar.isDate(moved, inSameDayAs: day) else { return false }
+        self.reminderAt = moved
+        scheduledDay = nil
+        return true
     }
 
     func staysOnHome(for days: Int, at date: Date) -> Bool {

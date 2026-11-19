@@ -175,7 +175,7 @@ struct TaskWidgetView: View {
                 }
                 .frame(height: 16)
 
-                if task.reminderAt != nil || task.note != nil {
+                if task.scheduledDate != nil || task.note != nil {
                     HStack(spacing: 5) {
                         if let due = task.reminderAt {
                             let clock = Date.FormatStyle.dateTime.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits)
@@ -185,6 +185,16 @@ struct TaskWidgetView: View {
                                     .locale(Locale(identifier: "zh_CN")))
                             } icon: {
                                 Image(systemName: "clock")
+                            }
+                            .foregroundStyle(detailInk(entry.colors.time))
+                            .lineLimit(1)
+                            .layoutPriority(1)
+                        } else if let day = task.scheduledDay {
+                            Label {
+                                Text(day, format: .dateTime.month(.defaultDigits).day(.defaultDigits)
+                                    .locale(Locale(identifier: "zh_CN")))
+                            } icon: {
+                                Image(systemName: "calendar")
                             }
                             .foregroundStyle(detailInk(entry.colors.time))
                             .lineLimit(1)

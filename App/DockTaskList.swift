@@ -4,12 +4,20 @@ import SwiftUI
 struct DockTaskList: View {
     let model: TaskListModel
     let settings: ReminderShortcutSettings
+    let draftEditingChanged: (Bool) -> Void
+    let datePickerVisibilityChanged: (Bool) -> Void
+    let editorVisibilityChanged: (Bool) -> Void
 
     @Environment(\.colorScheme) private var systemScheme
+    @Environment(\.calendar) private var calendar
     @AppStorage("windowDisplayMode") private var displayMode: DisplayMode = .system
     @AppStorage("strikeCompletedOnHome") private var strikeCompletedOnHome = false
     @AppStorage("homeCompletedRetentionDays") private var retentionDays = 0
-    @State private var showSaveError = false
+    @State private var draft = ""
+    @State private var errorMessage: String?
+    @State private var dates = TaskDatePresentation()
+    @State private var showingEditor = false
+    @FocusState private var composerFocused: Bool
 
     private let radius: CGFloat = 20
     private var scheme: ColorScheme { displayMode.colorScheme ?? systemScheme }
@@ -21,6 +29,26 @@ struct DockTaskList: View {
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: radius)
+        Group {
+            if showingEditor {
+                TaskEditor(draft: draft, closeDockEditor: { showingEditor = false }, save: saveTask)
+                    .environment(settings)
+            } else {
+                listContent
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background { DockGlass(radius: radius) }
+        .overlay { shape.strokeBorder(.primary.opacity(0.12)).allowsHitTesting(false) }
+        .environment(\.colorScheme, scheme)
+        .tint(accent)
+        .allowsWindowActivationEvents()
+        .onChange(of: composerFocused && !draft.isEmpty) { _, isEditing in draftEditingChanged(isEditing) }
+        .onChange(of: showingEditor) { _, isVisible in editorVisibilityChanged(isVisible) }
+    }
+
+    private var listContent: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("待办清单")
                 .font(.system(size: 16, weight: .semibold))
@@ -34,34 +62,65 @@ struct DockTaskList: View {
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                    ScrollView {
-                        LazyVStack(spacing: 5) {
-                            ForEach(tasks) { task in row(task) }
-                        }
+                    let groups = TaskDateGroup.groups(for: tasks, now: context.date, calendar: calendar,
+                                                      additionalDay: dates.additionalDay)
+                    TaskDateSections(groups: groups, now: context.date, tint: accent, dates: $dates, compact: true,
+                                     datePickerVisibilityChanged: datePickerVisibilityChanged) { id, group in
+                        let moved = model.moveTask(id, to: group.day, calendar: calendar)
+                        errorMessage = moved ? nil : "无法更改待办日期。请选择其他日期，或稍后再试。"
+                        if moved { dates.reveal(group) }
+                    } row: { task in
+                        row(task)
                     }
-                    .frame(maxHeight: .infinity, alignment: .top)
                 }
             }
-            if showSaveError {
-                Text("无法保存待办，请重试。")
+            if let errorMessage {
+                Text(errorMessage)
                     .font(.caption)
                     .foregroundStyle(.red)
                     .padding(.horizontal, 4)
             }
+            composer
         }
-        .padding(14)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background { DockGlass(radius: radius) }
-        .overlay { shape.strokeBorder(.primary.opacity(0.12)).allowsHitTesting(false) }
-        .environment(\.colorScheme, scheme)
-        .tint(accent)
-        .allowsWindowActivationEvents()
+    }
+
+    private var composer: some View {
+        HStack(spacing: 8) {
+            TextField("添加一条待办…", text: $draft)
+                .textFieldStyle(.plain)
+                .font(.system(size: 13))
+                .focused($composerFocused)
+                .onSubmit(openEditor)
+                .onExitCommand { composerFocused = false }
+
+            Button("添加", systemImage: "plus", action: openEditor)
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+        }
+        .padding(.horizontal, 9)
+        .frame(minHeight: 35)
+        .dockInputSurface(tint: accent, focused: composerFocused)
+    }
+
+    private func openEditor() {
+        composerFocused = false
+        showingEditor = true
+    }
+
+    private func saveTask(title: String, reminder: Date?, day: Date?, note: String) -> Bool {
+        guard model.saveTask(id: nil, title: title, reminder: reminder, day: day, note: note) else { return false }
+        draft = ""
+        errorMessage = nil
+        let group = (reminder ?? day).map { TaskDateGroup.ID.day(calendar.startOfDay(for: $0)) } ?? .unscheduled
+        dates.reveal(group)
+        return true
     }
 
     private func row(_ task: Todo) -> some View {
         HStack(alignment: .top, spacing: 8) {
             Button {
-                showSaveError = !model.setDone(task, to: !task.isDone, reportError: false)
+                let saved = model.setDone(task, to: !task.isDone, reportError: false)
+                errorMessage = saved ? nil : "无法保存待办，请重试。"
             } label: {
                 Image(systemName: task.isDone ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 15))
@@ -74,7 +133,7 @@ struct DockTaskList: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(task.title)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(task.isDone ? .secondary : .primary)
                     .strikethrough(task.isDone)
                     .lineLimit(2)
@@ -107,6 +166,17 @@ struct DockTaskList: View {
         }
         .padding(6)
         .background(.primary.opacity(0.06), in: .rect(cornerRadius: 10))
+    }
+}
+
+extension View {
+    func dockInputSurface(tint: Color, focused: Bool = false) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 9)
+        return background(.primary.opacity(0.06), in: shape)
+            .overlay {
+                shape.strokeBorder(focused ? tint.opacity(0.75) : .primary.opacity(0.13))
+                    .allowsHitTesting(false)
+            }
     }
 }
 

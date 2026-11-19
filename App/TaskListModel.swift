@@ -43,26 +43,36 @@ final class TaskListModel {
         }
     }
 
-    func saveTask(id: UUID?, title input: String, reminder: Date?, note inputNote: String) -> Bool {
+    func saveTask(id: UUID?, title input: String, reminder: Date?, day: Date?, note inputNote: String) -> Bool {
         let title = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty else { return false }
         let note = inputNote.trimmingCharacters(in: .whitespacesAndNewlines)
         var found = false
         let saved = change(reportError: false) { tasks in
+            let index: Int
             if let id {
-                guard let index = tasks.firstIndex(where: { $0.id == id }) else { return }
-                tasks[index].title = title
-                tasks[index].reminderAt = reminder
-                tasks[index].note = note.isEmpty ? nil : note
+                guard let existing = tasks.firstIndex(where: { $0.id == id }) else { return }
+                index = existing
             } else {
-                var task = Todo(title)
-                task.reminderAt = reminder
-                task.note = note.isEmpty ? nil : note
-                tasks.insert(task, at: 0)
+                tasks.insert(Todo(title), at: 0)
+                index = 0
             }
+            tasks[index].title = title
+            tasks[index].reminderAt = reminder
+            tasks[index].scheduledDay = reminder == nil ? day : nil
+            tasks[index].note = note.isEmpty ? nil : note
             found = true
         }
         return saved && found
+    }
+
+    func moveTask(_ id: UUID, to day: Date?, calendar: Calendar) -> Bool {
+        var moved = false
+        let saved = change(reportError: false) { tasks in
+            guard let index = tasks.firstIndex(where: { $0.id == id }) else { return }
+            moved = tasks[index].move(to: day, calendar: calendar)
+        }
+        return saved && moved
     }
 
     @discardableResult
