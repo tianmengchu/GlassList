@@ -1,7 +1,10 @@
 import AppIntents
 import Foundation
+import OSLog
 import UserNotifications
 import WidgetKit
+
+private let widgetLog = Logger(subsystem: GlassList.widgetKind, category: "Interaction")
 
 struct CompleteTaskIntent: AppIntent {
     static let title: LocalizedStringResource = "完成待办"
@@ -22,10 +25,13 @@ struct CompleteTaskIntent: AppIntent {
 
     func perform() async throws -> some IntentResult {
         guard let id = UUID(uuidString: taskID) else { return .result() }
-        try TaskStore.shared().update { tasks in
+        let tasks = try TaskStore.shared().update { tasks in
             if let index = tasks.firstIndex(where: { $0.id == id }) {
                 tasks[index].setDone(true)
             }
+        }
+        if tasks.contains(where: { $0.id == id && $0.isDone }) {
+            widgetLog.info("Widget task completed")
         }
         await TaskReminders.shared.sync()
         WidgetCenter.shared.reloadTimelines(ofKind: GlassList.widgetKind)
@@ -139,6 +145,7 @@ struct SetWidgetAppearanceIntent: AppIntent {
             return .result()
         }
         try size.setAppearance(mode)
+        widgetLog.info("Widget appearance changed")
         WidgetCenter.shared.reloadTimelines(ofKind: GlassList.widgetKind)
         return .result()
     }

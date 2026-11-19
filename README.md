@@ -10,6 +10,10 @@
 
 主窗口左下角的「外观」可以选择「跟随系统」「日间」或「夜间」。应用会记住选择。
 
+关闭主窗口后，浮光清单留在顶部菜单栏。点菜单栏的勾选方框图标，即可打开清单或完全退出。
+
+在设置的「启动」里，可以分别开启「登录时启动」和「启动时自动贴边」。自动贴边沿用上次选择的方向，首次默认右侧。
+
 点按主窗口右上角的「设置」或按 ⌘,，在主窗口内打开设置。可以自定义时间、备注和侧边条的颜色，以及添加、编辑或移除最多 10 个快捷时间。「显示倒计时」控制主窗口、侧边清单和桌面小组件里的倒计时。可从「到期通知」单独授权系统通知。「版本与更新」显示版本和构建编号，也可以开启自动检查更新或手动检查。
 
 新建和编辑待办时，从月历选择日期，将指针放在小时或分钟栏上滚动，也可直接输入数字。列表在标题下方同一行显示时间和备注。
@@ -33,8 +37,8 @@
 
 ### 发布到 GitHub Releases
 
-应用使用 Sparkle。给正式版提供 `GLASSLIST_UPDATE_PUBLIC_KEY`，值为用 Sparkle `generate_keys` 生成的 EdDSA 公钥，私钥保存在登录钥匙串。开发构建可以省略该值。首次发布之前，设置中的 GitHub 发布页链接可直接打开仓库的 Releases 页面。
+应用查询 GitHub 仓库的最新正式 Release。打开「自动检查更新」后，应用会在启动时和运行期间每天检查一次。发现新版后，可在设置或菜单栏点击安装包直链，由默认浏览器下载，再手动安装。 [GitHub Releases API](https://docs.github.com/en/rest/releases/releases#get-the-latest-release)
 
-发布时增加 `MARKETING_VERSION` 与 `CURRENT_PROJECT_VERSION`，用同一 Apple 开发团队的 Developer ID Application 证书和 Hardened Runtime 签名主应用与小组件，再完成 Apple 公证。将公证并装订后的应用打包为 ZIP，再用 Sparkle `generate_appcast` 对最终归档生成签名更新源。归档 URL 使用该版本的 GitHub Releases 下载地址，更新源固定为最新正式 Release 的 `appcast.xml` 附件。先上传归档和更新源，再发布 Release。后续版本继续使用同一个 App Group 与 EdDSA 密钥。 [Sparkle 发布说明](https://sparkle-project.org/documentation/publishing/) · [Apple 公证说明](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution)
+发布时更新 `MARKETING_VERSION` 和 `CURRENT_PROJECT_VERSION`。用 `v2.3` 这类纯数字版本标签发布，并将对应的 `GlassList-2.3-universal.dmg` 或 `GlassList-2.3-universal.zip` 作为 Release 附件上传。macOS 安装权限由系统按应用的签名和公证状态处理。 [Apple 分发签名说明](https://developer.apple.com/developer-id/)
 
 `App` 是主窗口，`Widget` 是 WidgetKit 扩展，`Shared` 包含本地存储和小组件的完成操作。

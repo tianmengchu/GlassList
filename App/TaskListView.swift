@@ -29,11 +29,11 @@ struct TaskListView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(ReminderShortcutSettings.self) private var detailSettings
+    @Environment(TaskListModel.self) private var model
+    @Environment(WindowDock.self) private var windowDock
     @AppStorage("windowDisplayMode") private var displayMode: DisplayMode = .system
     @AppStorage("strikeCompletedOnHome") private var strikeCompletedOnHome = false
     @AppStorage("homeCompletedRetentionDays") private var retentionDays = 0
-    @State private var model = TaskListModel()
-    @State private var windowDock = WindowDock()
     @State private var filter: ListFilter = .pending
     @State private var draft = ""
     @State private var editTask: Todo?
@@ -61,6 +61,7 @@ struct TaskListView: View {
     )
 
     var body: some View {
+        @Bindable var model = model
         HStack(spacing: 0) {
             sidebar
                 .frame(width: 210)
@@ -96,7 +97,7 @@ struct TaskListView: View {
         .onOpenURL { url in
             guard url.scheme == GlassList.openURL.scheme else { return }
             model.reload()
-            windowDock.showMainWindow()
+            windowDock.bringMainWindowForward()
             if url.host == GlassList.newTaskURL.host { showNewTask = true }
         }
         .sheet(item: $editTask) { task in

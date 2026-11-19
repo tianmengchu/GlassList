@@ -15,8 +15,13 @@ enum DockEdge: String, CaseIterable, Identifiable {
 @Observable
 @MainActor
 final class WindowDock: NSObject {
+    static let autoDockAtLaunchKey = "autoDockAtLaunch"
+    private static let lastDockEdgeKey = "lastDockEdge"
+
     private(set) var edge: DockEdge?
     @ObservationIgnored private weak var window: NSWindow?
+    @ObservationIgnored private var mainWindowClosed = false
+    @ObservationIgnored private var startupDockPending = UserDefaults.standard.bool(forKey: WindowDock.autoDockAtLaunchKey)
     @ObservationIgnored private weak var model: TaskListModel?
     @ObservationIgnored private weak var settings: ReminderShortcutSettings?
     @ObservationIgnored private var tab: NSPanel?
@@ -32,20 +37,10 @@ final class WindowDock: NSObject {
     @ObservationIgnored private var originalCenterY: CGFloat?
     @ObservationIgnored private var expandedFrame: NSRect = .zero
 
-    static func hasVisibleTab(in app: NSApplication) -> Bool {
-        app.windows.contains { $0 is DockTabPanel && $0.isVisible }
-    }
+    private var availableMainWindow: NSWindow? { mainWindowClosed ? nil : window }
 
-    func attach(to window: NSWindow, model: TaskListModel, settings: ReminderShortcutSettings) {
-        self.model = model
-        self.settings = settings
-        guard self.window !== window else { return }
-        clearDock()
-        NotificationCenter.default.removeObserver(self)
-        self.window = window
-        NotificationCenter.default.addObserver(
-            self, selector: #selector(windowClosed), name: NSWindow.willCloseNotification, object: window
-        )
+    override init() {
+        super.init()
         NotificationCenter.default.addObserver(
             self, selector: #selector(screenChanged), name: NSApplication.didChangeScreenParametersNotification, object: nil
         )
@@ -57,11 +52,46 @@ final class WindowDock: NSObject {
         )
     }
 
+    func attach(to window: NSWindow, model: TaskListModel, settings: ReminderShortcutSettings) {
+        self.model = model
+        self.settings = settings
+        guard self.window !== window else { return }
+        let center = NotificationCenter.default
+        if let previous = self.window {
+            center.removeObserver(self, name: NSWindow.willCloseNotification, object: previous)
+            center.removeObserver(self, name: NSWindow.didBecomeKeyNotification, object: previous)
+            center.removeObserver(self, name: NSWindow.didChangeOcclusionStateNotification, object: previous)
+        }
+        self.window = window
+        mainWindowClosed = false
+        center.addObserver(self, selector: #selector(windowClosed), name: NSWindow.willCloseNotification, object: window)
+        center.addObserver(self, selector: #selector(windowBecameKey), name: NSWindow.didBecomeKeyNotification, object: window)
+        if startupDockPending {
+            center.addObserver(
+                self, selector: #selector(scheduleStartupDock), name: NSWindow.didChangeOcclusionStateNotification,
+                object: window
+            )
+            scheduleStartupDock()
+        }
+    }
+
+    @objc private func scheduleStartupDock() {
+        guard startupDockPending else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.startupDockPending, self.availableMainWindow?.isVisible == true else { return }
+            let savedEdge = UserDefaults.standard.string(forKey: Self.lastDockEdgeKey).flatMap { DockEdge(rawValue: $0) }
+            self.dock(to: savedEdge ?? .right)
+        }
+    }
+
     func dock(to edge: DockEdge) {
-        guard let window, let model, let settings,
-              let currentScreen = window.screen ?? NSScreen.main else { return }
+        let mainWindow = availableMainWindow
+        guard let model, let settings,
+              let currentScreen = screen ?? mainWindow?.screen ?? NSScreen.main else { return }
+        startupDockPending = false
+        UserDefaults.standard.set(edge.rawValue, forKey: Self.lastDockEdgeKey)
         if self.edge == nil {
-            originalCenterY = window.frame.midY
+            originalCenterY = mainWindow?.frame.midY
             screen = currentScreen
         }
 
@@ -72,7 +102,7 @@ final class WindowDock: NSObject {
         list = makeList(model: model, settings: settings)
         reposition()
         tab?.orderFrontRegardless()
-        window.orderOut(nil)
+        mainWindow?.orderOut(nil)
     }
 
     private func reveal(grace: TimeInterval = 0) {
@@ -110,11 +140,24 @@ final class WindowDock: NSObject {
         showMainWindow()
     }
 
-    @objc func showMainWindow() {
-        guard let window else { return }
+    @discardableResult
+    func bringMainWindowForward() -> Bool {
+        startupDockPending = false
         hideList()
+        guard let window = availableMainWindow else { return false }
         NSApp.activate()
+        if window.isMiniaturized { window.deminiaturize(nil) }
         window.makeKeyAndOrderFront(nil)
+        return true
+    }
+
+    @objc private func showMainWindow() {
+        if !bringMainWindowForward() {
+            NSWorkspace.shared.open(
+                [GlassList.openURL], withApplicationAt: Bundle.main.bundleURL,
+                configuration: NSWorkspace.OpenConfiguration(), completionHandler: nil
+            )
+        }
     }
 
     private var positionKey: String? {
@@ -309,14 +352,20 @@ final class WindowDock: NSObject {
     }
 
     @objc private func windowClosed() {
-        clearDock()
-        window = nil
-        NotificationCenter.default.removeObserver(self)
+        mainWindowClosed = true
+        startupDockPending = false
+    }
+
+    @objc private func windowBecameKey() {
+        mainWindowClosed = false
+        hideList()
+        scheduleStartupDock()
     }
 
     @objc private func screenChanged() {
         guard edge != nil else { return }
-        screen = NSScreen.screens.first(where: { $0 == screen }) ?? window?.screen ?? NSScreen.main
+        screen = NSScreen.screens.first(where: { $0 == screen })
+            ?? availableMainWindow?.screen ?? NSScreen.main
         reposition()
     }
 }

@@ -1,4 +1,5 @@
 import AppKit
+import ServiceManagement
 import SwiftUI
 import UserNotifications
 import WidgetKit
@@ -135,28 +136,61 @@ struct ReminderSettingsView: View {
     @Environment(ReminderShortcutSettings.self) private var settings
     @Environment(AppUpdates.self) private var updates
     @Environment(\.scenePhase) private var scenePhase
+    @AppStorage(WindowDock.autoDockAtLaunchKey) private var autoDockAtLaunch = false
     @AppStorage("strikeCompletedOnHome") private var strikeCompletedOnHome = false
     @AppStorage("homeCompletedRetentionDays") private var retentionDays = 0
     @State private var authorization: UNAuthorizationStatus?
+    @State private var loginItemStatus = SMAppService.mainApp.status
+    @State private var loginItemError: String?
+
+    private var loginItemRegistered: Bool {
+        loginItemStatus == .enabled || loginItemStatus == .requiresApproval
+    }
 
     var body: some View {
         @Bindable var settings = settings
         Form {
+            Section("启动") {
+                Toggle("登录时启动", isOn: Binding(
+                    get: { loginItemRegistered },
+                    set: { setLoginItem(enabled: $0) }
+                ))
+                if loginItemStatus == .requiresApproval {
+                    LabeledContent("登录项", value: "等待 macOS 批准")
+                    Button("打开系统登录项设置…") {
+                        SMAppService.openSystemSettingsLoginItems()
+                    }
+                }
+                if let loginItemError {
+                    Text(loginItemError)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+
+                Toggle("启动时自动贴边", isOn: $autoDockAtLaunch)
+                    .help("沿用上次选择的贴边方向，首次默认贴合右侧。")
+            }
+
             Section("版本与更新") {
                 LabeledContent("当前版本", value: "\(AppUpdates.version)（\(AppUpdates.build)）")
                 Toggle("自动检查更新", isOn: Binding(
                     get: { updates.automaticallyChecks },
                     set: { updates.setAutomaticChecks($0) }
                 ))
-                .disabled(!updates.isConfigured)
                 HStack {
-                    Button("检查更新…") { updates.check() }
-                        .disabled(!updates.canCheck)
+                    Button(updates.isChecking ? "正在检查…" : "检查更新…") {
+                        Task { await updates.check() }
+                    }
+                    .disabled(updates.isChecking)
                     Spacer()
                     Link("GitHub 发布页", destination: AppUpdates.releasePage)
                 }
-                if !updates.isConfigured {
-                    Text("当前构建尚未配置已签名的更新源。")
+                if let update = updates.available {
+                    LabeledContent("可用更新", value: update.version)
+                    Link("下载 \(update.version) 安装包", destination: update.downloadURL)
+                }
+                if let statusMessage = updates.statusMessage {
+                    Text(statusMessage)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -291,8 +325,29 @@ struct ReminderSettingsView: View {
         }
         .formStyle(.grouped)
         .task(id: scenePhase) {
+            loginItemStatus = SMAppService.mainApp.status
             authorization = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
             await TaskReminders.shared.sync()
+        }
+    }
+
+    private func setLoginItem(enabled: Bool) {
+        let service = SMAppService.mainApp
+        loginItemStatus = service.status
+        loginItemError = nil
+        guard enabled != loginItemRegistered else { return }
+        defer { loginItemStatus = service.status }
+
+        do {
+            if enabled {
+                try service.register()
+            } else {
+                try service.unregister()
+            }
+        } catch {
+            if !enabled || service.status != .requiresApproval {
+                loginItemError = enabled ? "暂时无法启用登录时启动，请重试。" : "暂时无法关闭登录时启动，请重试。"
+            }
         }
     }
 

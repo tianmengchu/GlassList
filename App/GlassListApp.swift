@@ -1,19 +1,24 @@
 import AppKit
-import Sparkle
 import SwiftUI
 import UserNotifications
 
 @main
 struct GlassListApp: App {
+    fileprivate static let listWindowID = "list"
+
     @NSApplicationDelegateAdaptor(GlassListLifecycle.self) private var lifecycle
     @FocusedValue(\.todoComposer) private var todoComposer
     @FocusedValue(\.showListSettings) private var showListSettings
     @State private var shortcutSettings = ReminderShortcutSettings()
     @State private var updates = AppUpdates()
+    @State private var model = TaskListModel()
+    @State private var windowDock = WindowDock()
 
     var body: some Scene {
-        Window("浮光清单", id: "list") {
+        Window("浮光清单", id: Self.listWindowID) {
             TaskListView()
+                .environment(model)
+                .environment(windowDock)
                 .environment(shortcutSettings)
                 .environment(updates)
                 .frame(minWidth: 660, minHeight: 480)
@@ -35,47 +40,36 @@ struct GlassListApp: App {
                     .disabled(todoComposer == nil)
             }
         }
+
+        MenuBarExtra {
+            GlassListMenu(windowDock: windowDock)
+                .environment(updates)
+        } label: {
+            Label("浮光清单", systemImage: updates.available == nil ? "checkmark.square" : "arrow.down.circle")
+        }
     }
 }
 
-@MainActor
-@Observable
-final class AppUpdates {
-    static let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
-    static let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""
-    static let releasePage = URL(string: "https://github.com/tianmengchu/GlassList/releases")!
+private struct GlassListMenu: View {
+    @Environment(\.openWindow) private var openWindow
+    @Environment(AppUpdates.self) private var updates
+    let windowDock: WindowDock
 
-    private let controller: SPUStandardUpdaterController?
-    @ObservationIgnored private var observation: NSKeyValueObservation?
-    private(set) var canCheck = false
-    private(set) var automaticallyChecks = false
-    var isConfigured: Bool { controller != nil }
-
-    init() {
-        let publicKey = Bundle.main.object(forInfoDictionaryKey: "SUPublicEDKey") as? String
-        guard let publicKey, Data(base64Encoded: publicKey)?.count == 32 else {
-            controller = nil
-            return
+    var body: some View {
+        Button("打开浮光清单") {
+            if !windowDock.bringMainWindowForward() {
+                NSApp.activate()
+                openWindow(id: GlassListApp.listWindowID)
+            }
         }
-        let controller = SPUStandardUpdaterController(
-            startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil
-        )
-        self.controller = controller
-        automaticallyChecks = controller.updater.automaticallyChecksForUpdates
-        observation = controller.updater.observe(\.canCheckForUpdates, options: [.initial, .new]) { [weak self] _, change in
-            let available = change.newValue ?? false
-            Task { @MainActor [weak self] in self?.canCheck = available }
+        Divider()
+        if let update = updates.available {
+            Link("下载浮光清单 \(update.version)", destination: update.downloadURL)
+            Divider()
         }
-    }
-
-    func setAutomaticChecks(_ enabled: Bool) {
-        guard let controller else { return }
-        controller.updater.automaticallyChecksForUpdates = enabled
-        automaticallyChecks = enabled
-    }
-
-    func check() {
-        controller?.checkForUpdates(nil)
+        Button("退出浮光清单") {
+            NSApp.terminate(nil)
+        }
     }
 }
 
@@ -91,7 +85,7 @@ private final class GlassListLifecycle: NSObject, NSApplicationDelegate, UNUserN
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        !WindowDock.hasVisibleTab(in: sender)
+        false
     }
 }
 

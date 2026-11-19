@@ -22,7 +22,6 @@
 				"Base",
 			);
 			mainGroup = 000000000000000000000014;
-			packageReferences = (00000000000000000000003E);
 			productRefGroup = 000000000000000000000006;
 			projectDirPath = "";
 			projectRoot = "";
@@ -40,7 +39,6 @@
 			buildConfigurationList = 000000000000000000000017;
 			buildPhases = (
 				000000000000000000000027,
-				000000000000000000000040,
 				000000000000000000000029,
 				000000000000000000000021,
 			);
@@ -48,7 +46,6 @@
 			dependencies = (
 				00000000000000000000001F,
 			);
-			packageProductDependencies = (00000000000000000000003F);
 		};
 		000000000000000000000003 = {
 			isa = "PBXNativeTarget";
@@ -142,6 +139,7 @@
 				000000000000000000000038,
 				000000000000000000000039,
 				00000000000000000000003C,
+				00000000000000000000003E,
 				00000000000000000000000D,
 				00000000000000000000000E,
 			);
@@ -198,7 +196,6 @@
 				CODE_SIGN_ENTITLEMENTS = "App/GlassList.entitlements";
 				GENERATE_INFOPLIST_FILE = "YES";
 				INFOPLIST_FILE = "App/Info.plist";
-				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks");
 				PRODUCT_BUNDLE_IDENTIFIER = "com.tian.glasslist";
 				PRODUCT_NAME = "浮光清单";
 			};
@@ -210,7 +207,6 @@
 				CODE_SIGN_ENTITLEMENTS = "App/GlassList.entitlements";
 				GENERATE_INFOPLIST_FILE = "YES";
 				INFOPLIST_FILE = "App/Info.plist";
-				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks");
 				PRODUCT_BUNDLE_IDENTIFIER = "com.tian.glasslist";
 				PRODUCT_NAME = "浮光清单";
 			};
@@ -265,12 +261,12 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = "Manual";
 				CODE_SIGN_IDENTITY = "-";
-				CURRENT_PROJECT_VERSION = "16";
+				CURRENT_PROJECT_VERSION = "21";
 				GLASSLIST_APP_GROUP = "group.com.tian.glasslist";
 				ALWAYS_SEARCH_USER_PATHS = "NO";
 				COPY_PHASE_STRIP = "NO";
 				MACOSX_DEPLOYMENT_TARGET = "26.0";
-				MARKETING_VERSION = "2.1";
+				MARKETING_VERSION = "2.3";
 				SDKROOT = "macosx";
 				SWIFT_VERSION = "6.0";
 				DEBUG_INFORMATION_FORMAT = "dwarf";
@@ -284,12 +280,12 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = "Manual";
 				CODE_SIGN_IDENTITY = "-";
-				CURRENT_PROJECT_VERSION = "16";
+				CURRENT_PROJECT_VERSION = "21";
 				GLASSLIST_APP_GROUP = "group.com.tian.glasslist";
 				ALWAYS_SEARCH_USER_PATHS = "NO";
 				COPY_PHASE_STRIP = "NO";
 				MACOSX_DEPLOYMENT_TARGET = "26.0";
-				MARKETING_VERSION = "2.1";
+				MARKETING_VERSION = "2.3";
 				SDKROOT = "macosx";
 				SWIFT_VERSION = "6.0";
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
@@ -373,6 +369,7 @@
 				00000000000000000000003A,
 				00000000000000000000003B,
 				00000000000000000000003D,
+				00000000000000000000003F,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -481,24 +478,14 @@
 			fileRef = 00000000000000000000003C;
 		};
 		00000000000000000000003E = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/sparkle-project/Sparkle.git";
-			requirement = { kind = exactVersion; version = "2.10.1"; };
+			isa = "PBXFileReference";
+			path = "AppUpdates.swift";
+			lastKnownFileType = "sourcecode.swift";
+			sourceTree = "<group>";
 		};
 		00000000000000000000003F = {
-			isa = XCSwiftPackageProductDependency;
-			package = 00000000000000000000003E;
-			productName = Sparkle;
-		};
-		000000000000000000000040 = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (000000000000000000000041);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		000000000000000000000041 = {
-			isa = PBXBuildFile;
-			productRef = 00000000000000000000003F;
+			isa = "PBXBuildFile";
+			fileRef = 00000000000000000000003E;
 		};
 	};
 	rootObject = 000000000000000000000001;
