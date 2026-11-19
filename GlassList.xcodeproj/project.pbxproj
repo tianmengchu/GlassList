@@ -41,7 +41,6 @@
 			buildPhases = (
 				000000000000000000000027,
 				000000000000000000000040,
-				000000000000000000000042,
 				000000000000000000000029,
 				000000000000000000000021,
 			);
@@ -500,20 +499,6 @@
 		000000000000000000000041 = {
 			isa = PBXBuildFile;
 			productRef = 00000000000000000000003F;
-		};
-		000000000000000000000042 = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = "";
-			dstSubfolderSpec = 10;
-			files = (000000000000000000000043);
-			name = "Embed Frameworks";
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		000000000000000000000043 = {
-			isa = PBXBuildFile;
-			productRef = 00000000000000000000003F;
-			settings = { ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy); };
 		};
 	};
 	rootObject = 000000000000000000000001;
