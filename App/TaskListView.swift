@@ -44,11 +44,9 @@ struct TaskListView: View {
     @State private var dates = TaskDatePresentation()
     @FocusState private var composerFocused: Bool
 
-    private var isDark: Bool { scheme == .dark }
-    private var accent: Color { isDark ? Color(red: 0.65, green: 0.88, blue: 0.80) : Color(red: 0.13, green: 0.41, blue: 0.36) }
-    private var windowFill: Color { isDark ? Color(red: 0.08, green: 0.10, blue: 0.12) : Color(red: 0.97, green: 0.98, blue: 0.98) }
-    private var sidebarFill: Color { isDark ? Color(red: 0.11, green: 0.13, blue: 0.16) : Color(red: 0.92, green: 0.94, blue: 0.94) }
-    private var controlFill: Color { isDark ? Color(red: 0.13, green: 0.16, blue: 0.19) : .white }
+    private var palette: AppPalette { detailSettings.theme.palette(for: displayMode.colorScheme ?? scheme) }
+    private var accent: Color { palette.accent.swatch }
+    private var controlFill: Color { palette.surface.swatch }
     private func visibleTasks(at date: Date) -> [Todo] {
         if filter == .pending {
             return model.homeTasks(at: date, includeCompleted: strikeCompletedOnHome, retentionDays: retentionDays)
@@ -90,8 +88,10 @@ struct TaskListView: View {
             DockWindowAccess(controller: windowDock, model: model, settings: detailSettings)
                 .allowsHitTesting(false)
         }
-        .containerBackground(windowFill, for: .window)
+        .containerBackground(palette.background.swatch, for: .window)
         .preferredColorScheme(displayMode.colorScheme)
+        .environment(\.appPalette, palette)
+        .foregroundStyle(palette.text.swatch)
         .tint(accent)
         .focusedSceneValue(\.todoComposer, $showNewTask)
         .focusedSceneValue(\.showListSettings, $showingSettings)
@@ -144,8 +144,10 @@ struct TaskListView: View {
                     .frame(width: 34, height: 34)
                     .background(accent.opacity(0.13), in: .rect(cornerRadius: 11))
                     .accessibilityHidden(true)
-                Text("浮光清单")
+                Text("一个完美的todolist")
                     .font(.system(size: 16, weight: .semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
             }
             .padding(.bottom, 23)
 
@@ -165,12 +167,13 @@ struct TaskListView: View {
         .padding(.horizontal, 20)
         .padding(.top, 48)
         .padding(.bottom, 18)
-        .background(sidebarFill)
+        .background(palette.sidebar.swatch)
     }
 
     private func dateSidebar(groups: [TaskDateGroup], now: Date) -> some View {
         VStack(alignment: .leading, spacing: 5) {
-            Divider()
+            Rectangle().fill(palette.text.swatch.opacity(0.08)).frame(height: 1)
+                .accessibilityHidden(true)
             Text("日期")
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(.secondary)
@@ -203,7 +206,7 @@ struct TaskListView: View {
             HStack(spacing: 7) {
                 Image(systemName: group.id == .unscheduled ? "tray" : "calendar")
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(selected ? accent : .secondary)
+                    .foregroundStyle(selected ? accent : palette.secondaryText)
                     .frame(width: 14)
                     .accessibilityHidden(true)
                 Text(group.title(at: now, calendar: calendar, abbreviated: true))
@@ -278,7 +281,7 @@ struct TaskListView: View {
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: item.symbol)
-                    .foregroundStyle(selected ? accent : .secondary)
+                    .foregroundStyle(selected ? accent : palette.secondaryText)
                     .frame(width: 18)
                 Text(item.rawValue)
                 Spacer(minLength: 4)
@@ -349,7 +352,7 @@ struct TaskListView: View {
                     .accessibilityAddTraits(.isHeader)
                 Spacer()
                 Button("返回清单", systemImage: "chevron.backward") { showingSettings = false }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(ThemeButtonStyle())
             }
             .padding(.horizontal, 24)
             .padding(.top, 50)
@@ -400,7 +403,7 @@ struct TaskListView: View {
             } label: {
                 Label("设置", systemImage: "gearshape")
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(ThemeButtonStyle())
             .controlSize(.large)
             .padding(.bottom, 4)
 
@@ -419,6 +422,7 @@ struct TaskListView: View {
             } label: {
                 Label("侧边贴合", systemImage: windowDock.edge?.symbol ?? "dock.rectangle")
             }
+            .menuStyle(.borderlessButton)
             .controlSize(.large)
             .padding(.bottom, 4)
         }
@@ -451,7 +455,7 @@ struct TaskListView: View {
             } label: {
                 Image(systemName: task.isDone ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 19, weight: .regular))
-                    .foregroundStyle(task.isDone ? accent : .secondary)
+                    .foregroundStyle(task.isDone ? accent : palette.secondaryText)
                     .frame(width: 30, height: 34)
                     .contentShape(.rect)
             }
@@ -504,7 +508,7 @@ struct TaskListView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 10)
-        .background(.primary.opacity(0.045), in: .rect(cornerRadius: 13))
+        .background(controlFill, in: .rect(cornerRadius: 13))
         .contextMenu { taskActions(task) }
     }
 
@@ -529,10 +533,7 @@ struct TaskListView: View {
 
             Button("添加") { showNewTask = true }
                 .font(.system(size: 12, weight: .semibold))
-                .buttonStyle(.borderedProminent)
-                .buttonBorderShape(.capsule)
-                .tint(accent)
-                .foregroundStyle(isDark ? Color.black.opacity(0.82) : .primary)
+                .buttonStyle(ThemeButtonStyle(prominent: true))
         }
         .padding(.leading, 17)
         .padding(.trailing, 8)

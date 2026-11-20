@@ -14,15 +14,22 @@ struct TaskDateGroup: Identifiable {
     let id: ID
     let tasks: [Todo]
 
-    static func groups(for tasks: [Todo], now: Date, calendar: Calendar, additionalDay: Date?) -> [Self] {
+    static func groups(for tasks: [Todo], now: Date, calendar: Calendar, additionalDay: Date? = nil,
+                       visibleDays: Set<Date>? = nil) -> [Self] {
         let today = calendar.startOfDay(for: now)
         let tomorrow = calendar.date(byAdding: .day, value: 1, to: today)
         let byDay = Dictionary(grouping: tasks) { task in
             task.scheduledDate.map { calendar.startOfDay(for: $0) }
         }
-        var days = Set(byDay.keys.compactMap { $0 })
-        days.formUnion([today, tomorrow, additionalDay].compactMap { $0 })
-        return days.sorted().map { Self(id: .day($0), tasks: byDay[$0] ?? []) }
+        let orderedDays: [Date]
+        if let visibleDays {
+            orderedDays = [today] + visibleDays.subtracting([today]).sorted()
+        } else {
+            var days = Set(byDay.keys.compactMap { $0 })
+            days.formUnion([today, tomorrow, additionalDay].compactMap { $0 })
+            orderedDays = days.sorted()
+        }
+        return orderedDays.map { Self(id: .day($0), tasks: byDay[$0] ?? []) }
             + [Self(id: .unscheduled, tasks: byDay[nil] ?? [])]
     }
 
@@ -82,29 +89,33 @@ struct TaskDateSections<Row: View>: View {
     let tint: Color
     @Binding var dates: TaskDatePresentation
     var compact = false
-    var datePickerVisibilityChanged: (Bool) -> Void = { _ in }
+    var removeDay: ((Date) -> Void)?
     let move: (UUID, TaskDateGroup.ID) -> Void
     @ViewBuilder let row: (Todo) -> Row
 
     @Environment(\.calendar) private var calendar
+    @Environment(\.appPalette) private var palette
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var lookingAtDate = Date.now
     @State private var showingDatePicker = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: compact ? 4 : 8) {
-            HStack {
-                Spacer()
-                datePickerButton
+            if !compact {
+                HStack {
+                    Spacer()
+                    datePickerButton
+                }
+                .padding(.trailing, 4)
             }
-            .padding(.trailing, 4)
 
             ScrollViewReader { scroll in
                 ScrollView {
                     LazyVStack(spacing: compact ? 8 : 14) {
                         ForEach(groups) { group in
                             TaskDateSection(group: group, title: group.title(at: now, calendar: calendar, abbreviated: false),
-                                            tint: tint, compact: compact, expanded: dates.isExpanded(group.id)) {
+                                            tint: tint, compact: compact, expanded: dates.isExpanded(group.id),
+                                            remove: removal(for: group)) {
                                 withAnimation(reduceMotion ? nil : .snappy(duration: 0.2)) { dates.toggle(group.id) }
                             } move: { id in
                                 move(id, group.id)
@@ -122,8 +133,11 @@ struct TaskDateSections<Row: View>: View {
                 }
             }
         }
-        .onChange(of: showingDatePicker) { _, isVisible in datePickerVisibilityChanged(isVisible) }
-        .onDisappear { datePickerVisibilityChanged(false) }
+    }
+
+    private func removal(for group: TaskDateGroup) -> (() -> Void)? {
+        guard let day = group.id.day, let removeDay, !calendar.isDate(day, inSameDayAs: now) else { return nil }
+        return { removeDay(day) }
     }
 
     private var datePickerButton: some View {
@@ -132,7 +146,8 @@ struct TaskDateSections<Row: View>: View {
             showingDatePicker = true
         }
         .font(.caption)
-        .buttonStyle(.borderless)
+        .buttonStyle(ThemeButtonStyle())
+        .controlSize(.small)
         .popover(isPresented: $showingDatePicker) {
             VStack(spacing: 12) {
                 DatePicker("选择日期", selection: $lookingAtDate, displayedComponents: .date)
@@ -142,51 +157,69 @@ struct TaskDateSections<Row: View>: View {
                     dates.showDay(calendar.startOfDay(for: lookingAtDate))
                     showingDatePicker = false
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(ThemeButtonStyle(prominent: true))
             }
             .padding(12)
             .frame(width: 280)
+            .background(palette?.background.swatch ?? Color.clear)
         }
     }
 }
 
 private struct TaskDateSection<Row: View>: View {
+    @Environment(\.appPalette) private var palette
     let group: TaskDateGroup
     let title: String
     let tint: Color
     let compact: Bool
     let expanded: Bool
+    let remove: (() -> Void)?
     let toggle: () -> Void
     let move: (UUID) -> Void
     @ViewBuilder let row: (Todo) -> Row
 
     var body: some View {
         LazyVStack(alignment: .leading, spacing: compact ? 5 : 6) {
-            Button(action: toggle) {
-                HStack(spacing: 8) {
-                    Image(systemName: expanded ? "chevron.down" : "chevron.right")
-                        .font(.system(size: compact ? 10 : 11, weight: .semibold))
-                        .frame(width: 13)
-                        .accessibilityHidden(true)
-                    Text(title)
-                        .font(.system(size: compact ? 15 : 18, weight: .semibold))
-                        .lineLimit(1)
-                    Spacer(minLength: 4)
-                    Text(group.tasks.isEmpty ? "拖到这里" : "\(group.tasks.count) 项")
-                        .font(.caption2.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                        .accessibilityHidden(true)
+            HStack(spacing: 0) {
+                Button(action: toggle) {
+                    HStack(spacing: 8) {
+                        Image(systemName: expanded ? "chevron.down" : "chevron.right")
+                            .font(.system(size: compact ? 10 : 11, weight: .semibold))
+                            .frame(width: 13)
+                            .accessibilityHidden(true)
+                        Text(title)
+                            .font(.system(size: compact ? 15 : 18, weight: .semibold))
+                            .lineLimit(1)
+                        Spacer(minLength: 4)
+                        Text(group.tasks.isEmpty ? (compact ? "暂无待办" : "拖到这里") : "\(group.tasks.count) 项")
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                            .accessibilityHidden(true)
+                    }
+                    .padding(.horizontal, compact ? 8 : 10)
+                    .frame(minHeight: compact ? 29 : 37)
+                    .contentShape(.rect)
                 }
-                .foregroundStyle(group.id == .unscheduled ? .secondary : tint)
-                .padding(.horizontal, compact ? 8 : 10)
-                .frame(minHeight: compact ? 29 : 37)
-                .background(.primary.opacity(0.035), in: .rect(cornerRadius: 8))
-                .contentShape(.rect)
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(.isHeader)
+                .accessibilityValue("\(expanded ? "已展开" : "已折叠")，\(group.tasks.count) 项")
+                .help(group.dropHelp)
+
+                if let remove {
+                    Button(action: remove) {
+                        Image(systemName: "xmark.circle")
+                            .font(.system(size: 13))
+                            .frame(width: 28, height: 29)
+                            .contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .help("从侧边清单移除日期")
+                    .accessibilityLabel("移除 \(title)")
+                }
             }
-            .buttonStyle(.plain)
-            .accessibilityAddTraits(.isHeader)
-            .accessibilityValue("\(expanded ? "已展开" : "已折叠")，\(group.tasks.count) 项")
-            .help(group.dropHelp)
+            .foregroundStyle(group.id == .unscheduled ? (palette?.secondaryText ?? .secondary) : tint)
+            .background(.primary.opacity(0.035), in: .rect(cornerRadius: 8))
 
             if expanded {
                 ForEach(group.tasks) { task in

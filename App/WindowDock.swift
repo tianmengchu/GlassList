@@ -189,7 +189,7 @@ final class WindowDock: NSObject {
             backing: .buffered,
             defer: false
         )
-        panel.title = "浮光清单侧边标签"
+        panel.title = "一个完美的todolist侧边标签"
         panel.level = .floating
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
         panel.hidesOnDeactivate = false
@@ -448,7 +448,7 @@ private final class DockTabView: NSView {
         toolTip = "移入展开 · 上下拖动"
         setAccessibilityElement(true)
         setAccessibilityRole(.button)
-        setAccessibilityLabel("展开浮光清单")
+        setAccessibilityLabel("展开一个完美的todolist")
         observeColor()
     }
 

@@ -15,7 +15,7 @@ struct GlassListApp: App {
     @State private var windowDock = WindowDock()
 
     var body: some Scene {
-        Window("浮光清单", id: Self.listWindowID) {
+        Window("一个完美的todolist", id: Self.listWindowID) {
             TaskListView()
                 .environment(model)
                 .environment(windowDock)
@@ -45,7 +45,7 @@ struct GlassListApp: App {
             GlassListMenu(windowDock: windowDock)
                 .environment(updates)
         } label: {
-            Label("浮光清单", systemImage: updates.available == nil ? "checkmark.square" : "arrow.down.circle")
+            Label("一个完美的todolist", systemImage: updates.available == nil ? "checkmark.square" : "arrow.down.circle")
         }
     }
 }
@@ -56,7 +56,7 @@ private struct GlassListMenu: View {
     let windowDock: WindowDock
 
     var body: some View {
-        Button("打开浮光清单") {
+        Button("打开一个完美的todolist") {
             if !windowDock.bringMainWindowForward() {
                 NSApp.activate()
                 openWindow(id: GlassListApp.listWindowID)
@@ -64,10 +64,11 @@ private struct GlassListMenu: View {
         }
         Divider()
         if let update = updates.available {
-            Link("下载浮光清单 \(update.version)", destination: update.downloadURL)
+            Link(update.downloadURL == nil ? "查看 \(update.version) 发布页" : "下载一个完美的todolist \(update.version)",
+                 destination: update.destination)
             Divider()
         }
-        Button("退出浮光清单") {
+        Button("退出一个完美的todolist") {
             NSApp.terminate(nil)
         }
     }

@@ -33,7 +33,7 @@
 		000000000000000000000002 = {
 			isa = "PBXNativeTarget";
 			name = "GlassList";
-			productName = "浮光清单";
+			productName = "一个完美的todolist";
 			productReference = 000000000000000000000004;
 			productType = "com.apple.product-type.application";
 			buildConfigurationList = 000000000000000000000017;
@@ -62,7 +62,7 @@
 		};
 		000000000000000000000004 = {
 			isa = "PBXFileReference";
-			path = "浮光清单.app";
+			path = "一个完美的todolist.app";
 			lastKnownFileType = "wrapper.application";
 			sourceTree = "BUILT_PRODUCTS_DIR";
 		};
@@ -141,6 +141,7 @@
 				00000000000000000000003C,
 				00000000000000000000003E,
 				000000000000000000000040,
+				000000000000000000000042,
 				00000000000000000000000D,
 				00000000000000000000000E,
 			);
@@ -198,7 +199,7 @@
 				GENERATE_INFOPLIST_FILE = "YES";
 				INFOPLIST_FILE = "App/Info.plist";
 				PRODUCT_BUNDLE_IDENTIFIER = "com.tian.glasslist";
-				PRODUCT_NAME = "浮光清单";
+				PRODUCT_NAME = "一个完美的todolist";
 			};
 		};
 		000000000000000000000016 = {
@@ -209,7 +210,7 @@
 				GENERATE_INFOPLIST_FILE = "YES";
 				INFOPLIST_FILE = "App/Info.plist";
 				PRODUCT_BUNDLE_IDENTIFIER = "com.tian.glasslist";
-				PRODUCT_NAME = "浮光清单";
+				PRODUCT_NAME = "一个完美的todolist";
 			};
 		};
 		000000000000000000000017 = {
@@ -262,12 +263,12 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = "Manual";
 				CODE_SIGN_IDENTITY = "-";
-				CURRENT_PROJECT_VERSION = "27";
+				CURRENT_PROJECT_VERSION = "32";
 				GLASSLIST_APP_GROUP = "group.com.tian.glasslist";
 				ALWAYS_SEARCH_USER_PATHS = "NO";
 				COPY_PHASE_STRIP = "NO";
 				MACOSX_DEPLOYMENT_TARGET = "26.0";
-				MARKETING_VERSION = "2.4.5";
+				MARKETING_VERSION = "2.5.2";
 				SDKROOT = "macosx";
 				SWIFT_VERSION = "6.0";
 				DEBUG_INFORMATION_FORMAT = "dwarf";
@@ -281,12 +282,12 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = "Manual";
 				CODE_SIGN_IDENTITY = "-";
-				CURRENT_PROJECT_VERSION = "27";
+				CURRENT_PROJECT_VERSION = "32";
 				GLASSLIST_APP_GROUP = "group.com.tian.glasslist";
 				ALWAYS_SEARCH_USER_PATHS = "NO";
 				COPY_PHASE_STRIP = "NO";
 				MACOSX_DEPLOYMENT_TARGET = "26.0";
-				MARKETING_VERSION = "2.4.5";
+				MARKETING_VERSION = "2.5.2";
 				SDKROOT = "macosx";
 				SWIFT_VERSION = "6.0";
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
@@ -372,6 +373,7 @@
 				00000000000000000000003D,
 				00000000000000000000003F,
 				000000000000000000000041,
+				000000000000000000000043,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -498,6 +500,16 @@
 		000000000000000000000041 = {
 			isa = "PBXBuildFile";
 			fileRef = 000000000000000000000040;
+		};
+		000000000000000000000042 = {
+			isa = "PBXFileReference";
+			path = "AppearanceTheme.swift";
+			lastKnownFileType = "sourcecode.swift";
+			sourceTree = "<group>";
+		};
+		000000000000000000000043 = {
+			isa = "PBXBuildFile";
+			fileRef = 000000000000000000000042;
 		};
 	};
 	rootObject = 000000000000000000000001;

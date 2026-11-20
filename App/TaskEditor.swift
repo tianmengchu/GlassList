@@ -49,11 +49,10 @@ struct TaskEditor: View {
         _minute = State(initialValue: Self.twoDigits(clock.minute ?? 0))
     }
 
-    private var accent: Color {
-        colorScheme == .dark
-            ? Color(red: 0.61, green: 0.87, blue: 0.80)
-            : Color(red: 0.13, green: 0.41, blue: 0.36)
-    }
+    private var palette: AppPalette { shortcuts.theme.palette(for: colorScheme) }
+    private var accent: Color { palette.accent.swatch }
+    private var surface: Color { palette.surface.swatch }
+    private var dockSurface: Color { surface.opacity(0.42) }
 
     private var isDockEditor: Bool { closeDockEditor != nil }
 
@@ -84,8 +83,12 @@ struct TaskEditor: View {
                 }
                 .padding(24)
                 .frame(width: 660)
+                .background(palette.background.swatch)
             }
         }
+        .environment(\.appPalette, palette)
+        .foregroundStyle(palette.text.swatch)
+        .tint(accent)
         .onAppear { titleFocused = task == nil }
         .onChange(of: hour) { error = nil }
         .onChange(of: minute) { error = nil }
@@ -108,6 +111,7 @@ struct TaskEditor: View {
 
     private var noteField: some View {
         let editor = TextEditor(text: $note)
+            .scrollContentBackground(.hidden)
             .font(.body)
             .frame(height: isDockEditor ? 52 : 62)
             .accessibilityLabel("备注")
@@ -115,12 +119,12 @@ struct TaskEditor: View {
             Text("备注").font(isDockEditor ? .subheadline.weight(.semibold) : .headline)
             if isDockEditor {
                 editor
-                    .scrollContentBackground(.hidden)
                     .focused($noteFocused)
                     .padding(5)
-                    .dockInputSurface(tint: accent, focused: noteFocused)
+                    .dockInputSurface(tint: accent, fill: dockSurface, focused: noteFocused)
             } else {
                 editor.padding(5)
+                    .background(surface, in: .rect(cornerRadius: 6))
                     .overlay { RoundedRectangle(cornerRadius: 6).strokeBorder(.quaternary) }
             }
         }
@@ -134,8 +138,10 @@ struct TaskEditor: View {
             HStack {
                 Spacer()
                 Button("取消", action: close)
+                    .buttonStyle(ThemeButtonStyle())
                     .keyboardShortcut(.cancelAction)
                 Button("保存", action: commit)
+                    .buttonStyle(ThemeButtonStyle(prominent: true))
                     .keyboardShortcut(.defaultAction)
                     .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
@@ -155,9 +161,9 @@ struct TaskEditor: View {
                 .font(.system(size: 13, weight: .semibold))
                 .accessibilityHidden(true)
             if isDockEditor {
-                field.dockInputSurface(tint: accent, focused: titleFocused)
+                field.dockInputSurface(tint: accent, fill: dockSurface, focused: titleFocused)
             } else {
-                field.background(.background, in: .rect(cornerRadius: 10))
+                field.background(surface, in: .rect(cornerRadius: 10))
                     .overlay {
                         RoundedRectangle(cornerRadius: 10)
                             .strokeBorder(accent.opacity(titleFocused ? 0.85 : 0.33), lineWidth: titleFocused ? 1.5 : 1)
@@ -180,7 +186,7 @@ struct TaskEditor: View {
             HStack(alignment: .top, spacing: 14) {
                 ReminderCalendar(selection: $date, accent: accent)
                     .padding(12)
-                    .background(.background.opacity(0.6), in: .rect(cornerRadius: 14))
+                    .background(surface, in: .rect(cornerRadius: 14))
                     .frame(width: 322)
                     .disabled(!setsDate)
                     .opacity(setsDate ? 1 : 0.42)
@@ -258,13 +264,13 @@ struct TaskEditor: View {
             .controlSize(.small)
             .padding(.horizontal, 9)
             .frame(minHeight: 35)
-            .dockInputSurface(tint: accent)
+            .dockInputSurface(tint: accent, fill: dockSurface)
 
             switch dockPicker {
             case .calendar:
                 ReminderCalendar(selection: Binding(get: { date }, set: selectDockDate), accent: accent)
                     .padding(8)
-                    .dockInputSurface(tint: accent)
+                    .dockInputSurface(tint: accent, fill: dockSurface)
             case .time:
                 dockClockEditor
             case nil:
@@ -342,7 +348,7 @@ struct TaskEditor: View {
         }
         .controlSize(.small)
         .padding(8)
-        .dockInputSurface(tint: accent)
+        .dockInputSurface(tint: accent, fill: dockSurface)
     }
 
     private func dockClockField(_ label: String, value: Binding<String>) -> some View {
@@ -397,7 +403,7 @@ struct TaskEditor: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.background.opacity(0.6), in: .rect(cornerRadius: 14))
+        .background(surface, in: .rect(cornerRadius: 14))
         .disabled(!setsDate || !setsTime)
         .opacity(setsDate && setsTime ? 1 : 0.42)
     }
@@ -631,7 +637,7 @@ private struct ClockScrollMonitor: NSViewRepresentable {
 
 private struct ReminderCalendar: View {
     @Environment(\.calendar) private var userCalendar
-    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.appPalette) private var palette
     @Binding var selection: Date
     let accent: Color
     @State private var displayedMonth: Date?
@@ -708,14 +714,15 @@ private struct ReminderCalendar: View {
         let selected = calendar.isDate(day, inSameDayAs: selection)
         let today = calendar.isDateInToday(day)
         let currentMonth = calendar.isDate(day, equalTo: month, toGranularity: .month)
-        let selectionInk: Color = colorScheme == .dark ? Color(red: 0.09, green: 0.17, blue: 0.15) : .white
+        let selectionInk = palette?.accentText ?? .white
+        let dayInk = currentMonth ? (palette?.text.swatch ?? .primary) : (palette?.secondaryText ?? .secondary).opacity(0.6)
         return Button {
             selection = day
             displayedMonth = day
         } label: {
             Text(calendar.component(.day, from: day), format: .number)
                 .font(.system(size: 12, weight: selected || today ? .semibold : .regular).monospacedDigit())
-                .foregroundStyle(selected ? selectionInk : currentMonth ? Color.primary : Color.secondary.opacity(0.6))
+                .foregroundStyle(selected ? selectionInk : dayInk)
                 .frame(maxWidth: .infinity)
                 .frame(height: 27)
                 .background(selected ? accent : .clear, in: .rect(cornerRadius: 7))
@@ -734,6 +741,7 @@ private struct ReminderCalendar: View {
 }
 
 struct TaskDueCountdown: View {
+    @Environment(\.appPalette) private var palette
     let date: Date
 
     var body: some View {
@@ -744,7 +752,7 @@ struct TaskDueCountdown: View {
                 Text(label(seconds))
                     .font(.system(size: 13, weight: .semibold, design: .monospaced))
                     .monospacedDigit()
-                    .foregroundStyle(seconds == 0 ? Color.red : Color.accentColor)
+                    .foregroundStyle(seconds == 0 ? Color.red : (palette?.accent.swatch ?? .accentColor))
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
                     .contentTransition(.identity)

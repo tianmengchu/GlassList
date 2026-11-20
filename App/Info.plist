@@ -3,11 +3,11 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleDisplayName</key>
-    <string>浮光清单</string>
+    <string>一个完美的todolist</string>
     <key>GlassListAppGroup</key>
     <string>$(GLASSLIST_APP_GROUP)</string>
     <key>CFBundleName</key>
-    <string>浮光清单</string>
+    <string>一个完美的todolist</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>LSApplicationCategoryType</key>
@@ -18,7 +18,7 @@
             <key>UTTypeIdentifier</key>
             <string>com.tian.glasslist.task-drag</string>
             <key>UTTypeDescription</key>
-            <string>浮光清单待办</string>
+            <string>一个完美的todolist待办</string>
             <key>UTTypeConformsTo</key>
             <array>
                 <string>public.data</string>
