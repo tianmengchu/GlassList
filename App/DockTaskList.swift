@@ -230,15 +230,16 @@ struct DockTaskList: View {
                         .lineLimit(2)
                         .help(task.title)
                     if task.reminderAt != nil || task.note != nil {
-                        HStack(alignment: .top, spacing: 4) {
+                        DockDetailTags {
                             if let date = task.reminderAt {
-                                DetailTag(symbol: "clock", tint: settings.colors.time.swatch, compact: true) {
+                                DetailTag(symbol: "clock", tint: settings.colors.time.swatch, compact: true,
+                                          stretchesVertically: true) {
                                     Text(date, format: .dateTime.month(.defaultDigits).day().hour().minute())
                                 }
-                                .layoutPriority(1)
                             }
                             if let note = task.note {
-                                DetailTag(symbol: "note.text", tint: settings.colors.note.swatch, compact: true, lineLimit: 2) {
+                                DetailTag(symbol: "note.text", tint: settings.colors.note.swatch, compact: true,
+                                          lineLimit: 2, stretchesVertically: true) {
                                     Text(note)
                                 }
                                 .help(note)
@@ -276,6 +277,39 @@ struct DockTaskList: View {
         .contentShape(.rect(cornerRadius: 10))
         .contextMenu {
             Button("编辑待办…", systemImage: "pencil") { openEditor(.edit(task)) }
+            Button("删除", systemImage: "trash", role: .destructive) {
+                let deleted = model.delete(task.id, reportError: false)
+                saveMessage = nil
+                errorMessage = deleted ? nil : "无法删除待办，请重试。"
+            }
+        }
+    }
+}
+
+private struct DockDetailTags: Layout {
+    private let spacing: CGFloat = 4
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let sizes = measure(subviews, width: proposal.width)
+        return CGSize(width: sizes.reduce(0) { $0 + $1.width } + spacing * CGFloat(max(0, sizes.count - 1)),
+                      height: sizes.map(\.height).max() ?? 0)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX
+        for (subview, size) in zip(subviews, measure(subviews, width: proposal.width)) {
+            subview.place(at: CGPoint(x: x, y: bounds.minY), anchor: .topLeading,
+                          proposal: ProposedViewSize(width: size.width, height: bounds.height))
+            x += size.width + spacing
+        }
+    }
+
+    private func measure(_ subviews: Subviews, width: CGFloat?) -> [CGSize] {
+        var remaining = width
+        return subviews.map { subview in
+            let size = subview.sizeThatFits(ProposedViewSize(width: remaining, height: nil))
+            remaining = remaining.map { max(0, $0 - size.width - spacing) }
+            return size
         }
     }
 }

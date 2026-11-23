@@ -84,8 +84,9 @@ final class TaskListModel {
         }
     }
 
-    func delete(_ id: UUID) {
-        change { $0.removeAll { $0.id == id } }
+    @discardableResult
+    func delete(_ id: UUID, reportError: Bool = true) -> Bool {
+        change(reportError: reportError) { $0.removeAll { $0.id == id } }
     }
 
     @discardableResult
