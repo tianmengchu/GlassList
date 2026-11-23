@@ -24,6 +24,20 @@ private enum ListFilter: String, CaseIterable, Identifiable {
     }
 }
 
+private struct HeaderActionChrome: ViewModifier {
+    let palette: AppPalette
+
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 9)
+        content
+            .padding(.horizontal, 11)
+            .frame(height: 34)
+            .background(palette.surface.swatch, in: shape)
+            .overlay { shape.strokeBorder(palette.text.swatch.opacity(0.13)).allowsHitTesting(false) }
+            .contentShape(shape)
+    }
+}
+
 struct TaskListView: View {
     @Environment(\.colorScheme) private var scheme
     @Environment(\.calendar) private var calendar
@@ -42,6 +56,8 @@ struct TaskListView: View {
     @State private var showingSettings = false
     @State private var showMoveError = false
     @State private var dates = TaskDatePresentation()
+    @State private var lookingAtDate = Date.now
+    @State private var showingDatePicker = false
     @FocusState private var composerFocused: Bool
 
     private var palette: AppPalette { detailSettings.theme.palette(for: displayMode.colorScheme ?? scheme) }
@@ -387,25 +403,36 @@ struct TaskListView: View {
     }
 
     private func header(now: Date) -> some View {
-        HStack(alignment: .bottom) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(now, format: dateFormat)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(accent)
-                Text(filter.rawValue)
-                    .font(.system(size: 36, weight: .semibold))
-                    .accessibilityAddTraits(.isHeader)
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .bottom, spacing: 12) {
+                headerTitle(now: now)
+                    .fixedSize()
+                Spacer(minLength: 0)
+                headerActions(now: now)
+                    .padding(.bottom, 3)
             }
-            Spacer()
+            VStack(alignment: .leading, spacing: 12) {
+                headerTitle(now: now)
+                headerActions(now: now)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+        }
+    }
 
-            Button {
-                showingSettings = true
-            } label: {
-                Label("设置", systemImage: "gearshape")
-            }
-            .buttonStyle(ThemeButtonStyle())
-            .controlSize(.large)
-            .padding(.bottom, 4)
+    private func headerTitle(now: Date) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(now, format: dateFormat)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(accent)
+            Text(filter.rawValue)
+                .font(.system(size: 36, weight: .semibold))
+                .accessibilityAddTraits(.isHeader)
+        }
+    }
+
+    private func headerActions(now: Date) -> some View {
+        HStack(spacing: 8) {
+            datePickerButton(now: now)
 
             Menu {
                 ForEach(DockEdge.allCases) { edge in
@@ -420,11 +447,64 @@ struct TaskListView: View {
                     Button("取消贴合") { windowDock.undock() }
                 }
             } label: {
-                Label("侧边贴合", systemImage: windowDock.edge?.symbol ?? "dock.rectangle")
+                headerActionContent("侧边贴合", symbol: windowDock.edge?.symbol ?? "dock.rectangle")
             }
             .menuStyle(.borderlessButton)
-            .controlSize(.large)
-            .padding(.bottom, 4)
+            .menuIndicator(.visible)
+            .modifier(HeaderActionChrome(palette: palette))
+
+            Button {
+                showingSettings = true
+            } label: {
+                headerActionContent("设置", symbol: "gearshape")
+                    .modifier(HeaderActionChrome(palette: palette))
+            }
+            .buttonStyle(.plain)
+        }
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private func headerActionContent(_ title: String, symbol: String, showsChevron: Bool = false) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: symbol)
+                .foregroundStyle(accent)
+                .frame(width: 15)
+                .accessibilityHidden(true)
+            Text(title)
+                .foregroundStyle(palette.text.swatch)
+            if showsChevron {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(palette.secondaryText)
+                    .accessibilityHidden(true)
+            }
+        }
+        .font(.system(size: 12, weight: .medium))
+    }
+
+    private func datePickerButton(now: Date) -> some View {
+        Button {
+            lookingAtDate = dates.additionalDay ?? now
+            showingDatePicker = true
+        } label: {
+            headerActionContent("选择日期", symbol: "calendar", showsChevron: true)
+                .modifier(HeaderActionChrome(palette: palette))
+        }
+        .buttonStyle(.plain)
+        .popover(isPresented: $showingDatePicker) {
+            VStack(spacing: 12) {
+                DatePicker("选择日期", selection: $lookingAtDate, displayedComponents: .date)
+                    .datePickerStyle(.graphical)
+                    .labelsHidden()
+                Button("显示这一天") {
+                    dates.showDay(calendar.startOfDay(for: lookingAtDate))
+                    showingDatePicker = false
+                }
+                .buttonStyle(ThemeButtonStyle(prominent: true))
+            }
+            .padding(12)
+            .frame(width: 280)
+            .background(palette.background.swatch)
         }
     }
 
@@ -469,7 +549,7 @@ struct TaskListView: View {
                     .foregroundStyle(task.isDone ? .secondary : .primary)
                     .fixedSize(horizontal: false, vertical: true)
                     .onTapGesture(count: 2) { editTask = task }
-                HStack(spacing: 7) {
+                HStack(alignment: .top, spacing: 7) {
                     DetailTag(symbol: task.reminderAt == nil ? "calendar" : "clock", tint: detailSettings.colors.time.swatch) {
                         if let time = task.reminderAt {
                             Text(time, format: .dateTime.year().month(.defaultDigits).day().hour().minute())
@@ -480,8 +560,8 @@ struct TaskListView: View {
                         }
                     }
                     .layoutPriority(1)
-                    DetailTag(symbol: "note.text", tint: detailSettings.colors.note.swatch) {
-                        Text(task.note?.replacingOccurrences(of: "\n", with: " ") ?? "无备注")
+                    DetailTag(symbol: "note.text", tint: detailSettings.colors.note.swatch, lineLimit: 2) {
+                        Text(task.note ?? "无备注")
                     }
                     .help(task.note ?? "无备注")
                 }

@@ -52,22 +52,30 @@ struct TaskEditor: View {
     private var palette: AppPalette { shortcuts.theme.palette(for: colorScheme) }
     private var accent: Color { palette.accent.swatch }
     private var surface: Color { palette.surface.swatch }
-    private var dockSurface: Color { surface.opacity(0.42) }
+    private var dockSurface: Color { surface.opacity(0.5) }
 
     private var isDockEditor: Bool { closeDockEditor != nil }
 
     var body: some View {
         Group {
             if isDockEditor {
-                VStack(alignment: .leading, spacing: 9) {
-                    heading
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack(spacing: 10) {
+                        Image(systemName: task == nil ? "plus" : "pencil")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(accent)
+                            .frame(width: 34, height: 34)
+                            .background(accent.opacity(0.12), in: .circle)
+                            .accessibilityHidden(true)
+                        heading
+                    }
                     ScrollView {
-                        VStack(alignment: .leading, spacing: 10) {
+                        VStack(alignment: .leading, spacing: 14) {
                             titleField
                             dockDatePanel
                             noteField
                         }
-                        .padding(1)
+                        .padding(2)
                     }
                     .frame(maxHeight: .infinity)
                     actionBar
@@ -89,7 +97,7 @@ struct TaskEditor: View {
         .environment(\.appPalette, palette)
         .foregroundStyle(palette.text.swatch)
         .tint(accent)
-        .onAppear { titleFocused = task == nil }
+        .onAppear { titleFocused = task == nil || isDockEditor }
         .onChange(of: hour) { error = nil }
         .onChange(of: minute) { error = nil }
         .onChange(of: date) { error = nil }
@@ -105,24 +113,32 @@ struct TaskEditor: View {
 
     private var heading: some View {
         Text(task == nil ? "新建待办" : "编辑待办")
-            .font(isDockEditor ? .headline : .title2.bold())
+            .font(isDockEditor ? .system(size: 18, weight: .semibold) : .title2.bold())
             .accessibilityAddTraits(.isHeader)
+    }
+
+    private func dockFieldLabel(_ title: String) -> some View {
+        Text(title)
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(palette.secondaryText)
     }
 
     private var noteField: some View {
         let editor = TextEditor(text: $note)
             .scrollContentBackground(.hidden)
-            .font(.body)
-            .frame(height: isDockEditor ? 52 : 62)
+            .font(isDockEditor ? .system(size: 13) : .body)
+            .frame(height: isDockEditor ? 104 : 62)
             .accessibilityLabel("备注")
         return VStack(alignment: .leading, spacing: 6) {
-            Text("备注").font(isDockEditor ? .subheadline.weight(.semibold) : .headline)
             if isDockEditor {
+                dockFieldLabel("备注")
+                    .accessibilityHidden(true)
                 editor
                     .focused($noteFocused)
-                    .padding(5)
+                    .padding(7)
                     .dockInputSurface(tint: accent, fill: dockSurface, focused: noteFocused)
             } else {
+                Text("备注").font(.headline)
                 editor.padding(5)
                     .background(surface, in: .rect(cornerRadius: 6))
                     .overlay { RoundedRectangle(cornerRadius: 6).strokeBorder(.quaternary) }
@@ -135,15 +151,26 @@ struct TaskEditor: View {
             if let error {
                 Text(error).font(.caption).foregroundStyle(.red)
             }
-            HStack {
+            HStack(spacing: isDockEditor ? 8 : nil) {
                 Spacer()
-                Button("取消", action: close)
-                    .buttonStyle(ThemeButtonStyle())
-                    .keyboardShortcut(.cancelAction)
-                Button("保存", action: commit)
-                    .buttonStyle(ThemeButtonStyle(prominent: true))
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                Button(action: close) {
+                    Text("取消")
+                        .frame(minWidth: isDockEditor ? 45 : nil, minHeight: isDockEditor ? 20 : nil)
+                }
+                .buttonStyle(ThemeButtonStyle())
+                .keyboardShortcut(.cancelAction)
+                Button(action: commit) {
+                    if isDockEditor {
+                        Label("保存", systemImage: "checkmark")
+                            .font(.system(size: 13, weight: .semibold))
+                            .frame(minWidth: 67, minHeight: 20)
+                    } else {
+                        Text("保存")
+                    }
+                }
+                .buttonStyle(ThemeButtonStyle(prominent: true))
+                .keyboardShortcut(.defaultAction)
+                .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
     }
@@ -152,17 +179,19 @@ struct TaskEditor: View {
         let field = TextField("写下要做的事", text: $title)
             .textFieldStyle(.plain)
             .font(.system(size: isDockEditor ? 15 : 18, weight: .semibold))
-            .padding(.horizontal, isDockEditor ? 9 : 13)
-            .frame(height: isDockEditor ? 35 : 45)
+            .padding(.horizontal, isDockEditor ? 11 : 13)
+            .frame(height: isDockEditor ? 40 : 45)
             .focused($titleFocused)
             .accessibilityLabel("待办标题")
         return VStack(alignment: .leading, spacing: 7) {
-            Text("待办标题")
-                .font(.system(size: 13, weight: .semibold))
-                .accessibilityHidden(true)
             if isDockEditor {
+                dockFieldLabel("待办标题")
+                    .accessibilityHidden(true)
                 field.dockInputSurface(tint: accent, fill: dockSurface, focused: titleFocused)
             } else {
+                Text("待办标题")
+                    .font(.system(size: 13, weight: .semibold))
+                    .accessibilityHidden(true)
                 field.background(surface, in: .rect(cornerRadius: 10))
                     .overlay {
                         RoundedRectangle(cornerRadius: 10)
@@ -224,7 +253,9 @@ struct TaskEditor: View {
 
     private var dockDatePanel: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
+            dockFieldLabel("日期与时间")
+
+            HStack(spacing: 7) {
                 Menu(dockDateLabel, systemImage: "calendar") {
                     Button("今天") { selectDockDate(.now) }
                     Button("明天") {
@@ -243,11 +274,17 @@ struct TaskEditor: View {
                 .accessibilityLabel("日期")
                 .accessibilityValue(dockDateLabel)
 
-                Divider().frame(height: 15)
-                Button(dockTimeLabel, systemImage: "clock", action: toggleDockClock)
-                    .buttonStyle(.borderless)
-                    .accessibilityLabel("提醒时间")
-                    .accessibilityValue(dockTimeLabel)
+                Button(action: toggleDockClock) {
+                    Label(dockTimeLabel, systemImage: "clock")
+                        .lineLimit(1)
+                        .padding(.horizontal, 7)
+                        .frame(height: 26)
+                        .background(accent.opacity(dockPicker == .time ? 0.17 : 0.08), in: .capsule)
+                        .contentShape(.capsule)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("提醒时间")
+                .accessibilityValue(dockTimeLabel)
 
                 Spacer(minLength: 0)
                 if !shortcuts.items.isEmpty {
@@ -261,9 +298,10 @@ struct TaskEditor: View {
                     .accessibilityLabel("快捷时间")
                 }
             }
+            .font(.system(size: 12, weight: .medium))
             .controlSize(.small)
             .padding(.horizontal, 9)
-            .frame(minHeight: 35)
+            .frame(minHeight: 40)
             .dockInputSurface(tint: accent, fill: dockSurface)
 
             switch dockPicker {

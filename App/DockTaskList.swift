@@ -2,6 +2,16 @@ import AppKit
 import SwiftUI
 
 struct DockTaskList: View {
+    private enum Editor {
+        case new
+        case edit(Todo)
+
+        var task: Todo? {
+            if case let .edit(task) = self { return task }
+            return nil
+        }
+    }
+
     let model: TaskListModel
     let settings: ReminderShortcutSettings
     let draftEditingChanged: (Bool) -> Void
@@ -17,7 +27,7 @@ struct DockTaskList: View {
     @State private var draft = ""
     @State private var errorMessage: String?
     @State private var dates = TaskDatePresentation()
-    @State private var showingEditor = false
+    @State private var editor: Editor?
     @State private var showingDatePicker = false
     @State private var saveMessage: String?
     @FocusState private var composerFocused: Bool
@@ -31,9 +41,11 @@ struct DockTaskList: View {
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: radius)
         Group {
-            if showingEditor {
-                TaskEditor(draft: draft, closeDockEditor: { showingEditor = false }, save: saveTask)
-                    .environment(settings)
+            if let editor {
+                TaskEditor(task: editor.task, draft: draft, closeDockEditor: { self.editor = nil }) { title, reminder, day, note in
+                    saveTask(id: editor.task?.id, title: title, reminder: reminder, day: day, note: note)
+                }
+                .environment(settings)
             } else {
                 listContent
             }
@@ -51,7 +63,7 @@ struct DockTaskList: View {
         .tint(accent)
         .allowsWindowActivationEvents()
         .onChange(of: composerFocused && !draft.isEmpty) { _, isEditing in draftEditingChanged(isEditing) }
-        .onChange(of: showingEditor) { _, isVisible in editorVisibilityChanged(isVisible) }
+        .onChange(of: editor != nil) { _, isVisible in editorVisibilityChanged(isVisible) }
         .onChange(of: showingDatePicker) { _, isVisible in datePickerVisibilityChanged(isVisible) }
     }
 
@@ -157,10 +169,10 @@ struct DockTaskList: View {
                 .textFieldStyle(.plain)
                 .font(.system(size: 13))
                 .focused($composerFocused)
-                .onSubmit(openEditor)
+                .onSubmit { openEditor(.new) }
                 .onExitCommand { composerFocused = false }
 
-            Button("添加", systemImage: "plus", action: openEditor)
+            Button("添加", systemImage: "plus") { openEditor(.new) }
                 .buttonStyle(ThemeButtonStyle(prominent: true))
                 .controlSize(.small)
         }
@@ -169,16 +181,16 @@ struct DockTaskList: View {
         .dockInputSurface(tint: accent, fill: surface, focused: composerFocused)
     }
 
-    private func openEditor() {
+    private func openEditor(_ destination: Editor) {
         showingDatePicker = false
         saveMessage = nil
         composerFocused = false
-        showingEditor = true
+        editor = destination
     }
 
-    private func saveTask(title: String, reminder: Date?, day: Date?, note: String) -> Bool {
-        guard model.saveTask(id: nil, title: title, reminder: reminder, day: day, note: note) else { return false }
-        draft = ""
+    private func saveTask(id: UUID?, title: String, reminder: Date?, day: Date?, note: String) -> Bool {
+        guard model.saveTask(id: id, title: title, reminder: reminder, day: day, note: note) else { return false }
+        if id == nil { draft = "" }
         errorMessage = nil
         if let day = (reminder ?? day).map({ calendar.startOfDay(for: $0) }) {
             if calendar.isDateInToday(day) || selectedDays.contains(day) {
@@ -194,56 +206,77 @@ struct DockTaskList: View {
     }
 
     private func row(_ task: Todo) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            Button {
-                let saved = model.setDone(task, to: !task.isDone, reportError: false)
-                saveMessage = nil
-                errorMessage = saved ? nil : "无法保存待办，请重试。"
-            } label: {
-                Image(systemName: task.isDone ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 15))
-                    .foregroundStyle(task.isDone ? accent : palette.secondaryText)
-                    .frame(width: 24, height: 25)
-                    .contentShape(.rect)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(task.isDone ? "恢复待办：\(task.title)" : "完成待办：\(task.title)")
+        HStack(spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
+                Button {
+                    let saved = model.setDone(task, to: !task.isDone, reportError: false)
+                    saveMessage = nil
+                    errorMessage = saved ? nil : "无法保存待办，请重试。"
+                } label: {
+                    Image(systemName: task.isDone ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 15))
+                        .foregroundStyle(task.isDone ? accent : palette.secondaryText)
+                        .frame(width: 24, height: 25)
+                        .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(task.isDone ? "恢复待办：\(task.title)" : "完成待办：\(task.title)")
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text(task.title)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(task.isDone ? .secondary : .primary)
-                    .strikethrough(task.isDone)
-                    .lineLimit(2)
-                    .help(task.title)
-                if task.reminderAt != nil || task.note != nil {
-                    HStack(spacing: 4) {
-                        if let date = task.reminderAt {
-                            DetailTag(symbol: "clock", tint: settings.colors.time.swatch, compact: true) {
-                                Text(date, format: .dateTime.month(.defaultDigits).day().hour().minute())
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(task.title)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(task.isDone ? .secondary : .primary)
+                        .strikethrough(task.isDone)
+                        .lineLimit(2)
+                        .help(task.title)
+                    if task.reminderAt != nil || task.note != nil {
+                        HStack(alignment: .top, spacing: 4) {
+                            if let date = task.reminderAt {
+                                DetailTag(symbol: "clock", tint: settings.colors.time.swatch, compact: true) {
+                                    Text(date, format: .dateTime.month(.defaultDigits).day().hour().minute())
+                                }
+                                .layoutPriority(1)
                             }
-                            .layoutPriority(1)
-                        }
-                        if let note = task.note {
-                            DetailTag(symbol: "note.text", tint: settings.colors.note.swatch, compact: true) {
-                                Text(note.replacingOccurrences(of: "\n", with: " "))
+                            if let note = task.note {
+                                DetailTag(symbol: "note.text", tint: settings.colors.note.swatch, compact: true, lineLimit: 2) {
+                                    Text(note)
+                                }
+                                .help(note)
                             }
-                            .help(note)
                         }
                     }
                 }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.vertical, 4)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 4)
 
-            if settings.display.showsCountdown, let date = task.reminderAt, !task.isDone {
-                TaskDueCountdown(date: date)
-                    .frame(width: 79, alignment: .trailing)
-                    .padding(.vertical, 3)
+                if settings.display.showsCountdown, let date = task.reminderAt, !task.isDone {
+                    TaskDueCountdown(date: date)
+                        .frame(width: 79, alignment: .trailing)
+                        .padding(.vertical, 3)
+                }
             }
+
+            Button {
+                openEditor(.edit(task))
+            } label: {
+                let shape = RoundedRectangle(cornerRadius: 6)
+                Image(systemName: "pencil")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(accent)
+                    .frame(width: 27, height: 25)
+                    .background(accent.opacity(0.11), in: shape)
+                    .contentShape(shape)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("编辑待办：\(task.title)")
+            .help("编辑待办")
         }
         .padding(6)
         .background(surface, in: .rect(cornerRadius: 10))
+        .contentShape(.rect(cornerRadius: 10))
+        .contextMenu {
+            Button("编辑待办…", systemImage: "pencil") { openEditor(.edit(task)) }
+        }
     }
 }
 

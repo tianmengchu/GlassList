@@ -243,7 +243,11 @@ final class WindowDock: NSObject {
             model: model, settings: settings,
             draftEditingChanged: { [weak panel] in panel?.hasFocusedDraft = $0 },
             datePickerVisibilityChanged: { [weak panel] in panel?.isChoosingDate = $0 },
-            editorVisibilityChanged: { [weak panel] in panel?.isEditingTask = $0 }
+            editorVisibilityChanged: { [weak panel] isVisible in
+                guard let panel else { return }
+                panel.isEditingTask = isVisible
+                if isVisible, panel.isVisible, !panel.isKeyWindow { panel.makeKey() }
+            }
         ))
         hosting.sizingOptions = []
         panel.contentView = hosting

@@ -94,43 +94,30 @@ struct TaskDateSections<Row: View>: View {
     @ViewBuilder let row: (Todo) -> Row
 
     @Environment(\.calendar) private var calendar
-    @Environment(\.appPalette) private var palette
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var lookingAtDate = Date.now
-    @State private var showingDatePicker = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: compact ? 4 : 8) {
-            if !compact {
-                HStack {
-                    Spacer()
-                    datePickerButton
-                }
-                .padding(.trailing, 4)
-            }
-
-            ScrollViewReader { scroll in
-                ScrollView {
-                    LazyVStack(spacing: compact ? 8 : 14) {
-                        ForEach(groups) { group in
-                            TaskDateSection(group: group, title: group.title(at: now, calendar: calendar, abbreviated: false),
-                                            tint: tint, compact: compact, expanded: dates.isExpanded(group.id),
-                                            remove: removal(for: group)) {
-                                withAnimation(reduceMotion ? nil : .snappy(duration: 0.2)) { dates.toggle(group.id) }
-                            } move: { id in
-                                move(id, group.id)
-                            } row: { task in
-                                row(task)
-                            }
-                            .id(group.id)
+        ScrollViewReader { scroll in
+            ScrollView {
+                LazyVStack(spacing: compact ? 8 : 14) {
+                    ForEach(groups) { group in
+                        TaskDateSection(group: group, title: group.title(at: now, calendar: calendar, abbreviated: false),
+                                        tint: tint, compact: compact, expanded: dates.isExpanded(group.id),
+                                        remove: removal(for: group)) {
+                            withAnimation(reduceMotion ? nil : .snappy(duration: 0.2)) { dates.toggle(group.id) }
+                        } move: { id in
+                            move(id, group.id)
+                        } row: { task in
+                            row(task)
                         }
+                        .id(group.id)
                     }
-                    .padding(.vertical, 1)
                 }
-                .defaultScrollAnchor(.top)
-                .onChange(of: dates.jump, initial: true) { _, jump in
-                    if let jump { scroll.scrollTo(jump.group, anchor: .top) }
-                }
+                .padding(.vertical, 1)
+            }
+            .defaultScrollAnchor(.top)
+            .onChange(of: dates.jump, initial: true) { _, jump in
+                if let jump { scroll.scrollTo(jump.group, anchor: .top) }
             }
         }
     }
@@ -138,31 +125,6 @@ struct TaskDateSections<Row: View>: View {
     private func removal(for group: TaskDateGroup) -> (() -> Void)? {
         guard let day = group.id.day, let removeDay, !calendar.isDate(day, inSameDayAs: now) else { return nil }
         return { removeDay(day) }
-    }
-
-    private var datePickerButton: some View {
-        Button("选择日期…", systemImage: "calendar") {
-            lookingAtDate = dates.additionalDay ?? now
-            showingDatePicker = true
-        }
-        .font(.caption)
-        .buttonStyle(ThemeButtonStyle())
-        .controlSize(.small)
-        .popover(isPresented: $showingDatePicker) {
-            VStack(spacing: 12) {
-                DatePicker("选择日期", selection: $lookingAtDate, displayedComponents: .date)
-                    .datePickerStyle(.graphical)
-                    .labelsHidden()
-                Button("显示这一天") {
-                    dates.showDay(calendar.startOfDay(for: lookingAtDate))
-                    showingDatePicker = false
-                }
-                .buttonStyle(ThemeButtonStyle(prominent: true))
-            }
-            .padding(12)
-            .frame(width: 280)
-            .background(palette?.background.swatch ?? Color.clear)
-        }
     }
 }
 

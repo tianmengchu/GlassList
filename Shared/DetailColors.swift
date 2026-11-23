@@ -17,6 +17,7 @@ struct DetailTag<Content: View>: View {
     let symbol: String
     let tint: Color
     var compact = false
+    var lineLimit = 1
     @ViewBuilder let content: () -> Content
 
     var body: some View {
@@ -25,7 +26,8 @@ struct DetailTag<Content: View>: View {
                 .fontWeight(.semibold)
                 .accessibilityHidden(true)
             content()
-                .lineLimit(1)
+                .lineLimit(lineLimit)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .font(.system(size: compact ? 9 : 11))
         .foregroundStyle(.primary)
