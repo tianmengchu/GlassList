@@ -77,6 +77,7 @@ struct TaskEditor: View {
                         }
                         .padding(2)
                     }
+                    .scrollIndicators(.hidden)
                     .frame(maxHeight: .infinity)
                     actionBar
                 }

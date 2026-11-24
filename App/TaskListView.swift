@@ -242,6 +242,7 @@ struct TaskListView: View {
                     }
                     .padding(1)
                 }
+                .scrollIndicators(.hidden)
                 .onChange(of: dates.jump) { _, jump in
                     if let jump { scroll.scrollTo(jump.group) }
                 }
@@ -670,7 +671,7 @@ struct TaskListView: View {
 
     private func datePickerButton(now: Date) -> some View {
         Button {
-            lookingAtDate = dates.additionalDay ?? now
+            lookingAtDate = dates.additionalDay ?? dates.jump?.group.day ?? now
             showingDatePicker = true
         } label: {
             headerActionContent("选择日期", symbol: "calendar", showsChevron: true)
@@ -678,19 +679,19 @@ struct TaskListView: View {
         }
         .buttonStyle(.plain)
         .popover(isPresented: $showingDatePicker) {
-            VStack(spacing: 12) {
-                DatePicker("选择日期", selection: $lookingAtDate, displayedComponents: .date)
-                    .datePickerStyle(.graphical)
-                    .labelsHidden()
-                Button("显示这一天") {
-                    dates.showDay(calendar.startOfDay(for: lookingAtDate))
-                    showingDatePicker = false
-                }
-                .buttonStyle(ThemeButtonStyle(prominent: true))
-            }
-            .padding(12)
-            .frame(width: 280)
-            .background(palette.background.swatch)
+            let taskDays = Set(model.tasks.lazy.filter { !$0.isDone }.compactMap(\.scheduledDate)
+                .map { calendar.startOfDay(for: $0) })
+            MainDatePicker(
+                now: now,
+                palette: palette,
+                taskDays: taskDays,
+                selectedDay: $lookingAtDate,
+                select: { day in
+                    lookingAtDate = day
+                    dates.showDay(day)
+                },
+                finish: { showingDatePicker = false }
+            )
         }
     }
 
@@ -888,5 +889,184 @@ private struct TaskRowCard: View {
     private var actions: some View {
         Button("编辑待办…", systemImage: "pencil", action: edit)
         Button("删除", systemImage: "trash", role: .destructive, action: delete)
+    }
+}
+
+private struct MainDatePicker: View {
+    let now: Date
+    let palette: AppPalette
+    let taskDays: Set<Date>
+    @Binding var selectedDay: Date
+    let select: (Date) -> Void
+    let finish: () -> Void
+
+    @Environment(\.calendar) private var calendar
+    @State private var displayedMonth: Date?
+
+    private var today: Date { calendar.startOfDay(for: now) }
+    private var activeDay: Date { calendar.startOfDay(for: selectedDay) }
+    private var tint: Color { palette.accent.swatch }
+    private var monthStart: Date { calendar.dateInterval(of: .month, for: displayedMonth ?? activeDay)?.start ?? today }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text(monthStart, format: .dateTime.year().month(.wide).locale(Locale(identifier: "zh_CN")))
+                    .font(.headline)
+                    .accessibilityAddTraits(.isHeader)
+                Spacer()
+                monthButton(-1, label: "上个月", symbol: "chevron.left")
+                monthButton(1, label: "下个月", symbol: "chevron.right")
+            }
+
+            HStack(spacing: 6) {
+                shortcut("今天", systemImage: "sun.max") {
+                    choose(today)
+                }
+                shortcut("明天", systemImage: "sunrise") {
+                    if let tomorrow = calendar.date(byAdding: .day, value: 1, to: today) {
+                        choose(tomorrow)
+                    }
+                }
+                shortcut("下周", systemImage: "calendar") {
+                    if let nextWeek = calendar.date(byAdding: .day, value: 7, to: today) {
+                        choose(nextWeek)
+                    }
+                }
+            }
+
+            monthGrid
+
+            Label {
+                Text("已有待办")
+                    .foregroundStyle(.secondary)
+            } icon: {
+                Circle().fill(.red).frame(width: 5, height: 5)
+            }
+            .font(.caption2)
+
+            Rectangle().fill(palette.text.swatch.opacity(0.1)).frame(height: 1)
+                .accessibilityHidden(true)
+            HStack(spacing: 10) {
+                Text(activeDay, format: .dateTime.year().month().day().locale(Locale(identifier: "zh_CN")))
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button("完成", action: finish)
+                    .buttonStyle(ThemeButtonStyle(prominent: true))
+            }
+            .controlSize(.small)
+        }
+        .padding(14)
+        .frame(width: 310)
+        .background(palette.background.swatch)
+        .foregroundStyle(palette.text.swatch)
+        .tint(tint)
+    }
+
+    private func choose(_ day: Date) {
+        let normalized = calendar.startOfDay(for: day)
+        displayedMonth = normalized
+        select(normalized)
+    }
+
+    private var monthGrid: some View {
+        var chineseCalendar = calendar
+        chineseCalendar.locale = Locale(identifier: "zh_CN")
+        let firstWeekday = calendar.firstWeekday
+        let weekdayNames = chineseCalendar.veryShortStandaloneWeekdaySymbols
+        let leading = (calendar.component(.weekday, from: monthStart) - firstWeekday + 7) % 7
+        let days = calendar.range(of: .day, in: .month, for: monthStart)?.count ?? 0
+        let cellCount = ((leading + days + 6) / 7) * 7
+        return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 3), count: 7), spacing: 4) {
+            ForEach(0..<7, id: \.self) { offset in
+                Text(weekdayNames[(firstWeekday - 1 + offset) % 7])
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .frame(height: 17)
+                    .accessibilityHidden(true)
+            }
+            ForEach(0..<cellCount, id: \.self) { cell in
+                let offset = cell - leading
+                if (0..<days).contains(offset), let day = calendar.date(byAdding: .day, value: offset, to: monthStart) {
+                    dayButton(calendar.startOfDay(for: day))
+                } else {
+                    Color.clear.frame(height: 31).accessibilityHidden(true)
+                }
+            }
+        }
+    }
+
+    private func dayButton(_ day: Date) -> some View {
+        let isToday = day == today
+        let selected = day == activeDay
+        let hasTasks = taskDays.contains(day)
+        return Button {
+            choose(day)
+        } label: {
+            Text(calendar.component(.day, from: day), format: .number)
+                .font(.system(size: 12, weight: selected || isToday ? .semibold : .regular).monospacedDigit())
+                .foregroundStyle(selected ? tint : palette.text.swatch)
+                .frame(maxWidth: .infinity)
+                .frame(height: 31)
+                .background(selected ? tint.opacity(0.15) : Color.primary.opacity(0.035), in: .rect(cornerRadius: 7))
+                .overlay {
+                    if isToday && !selected {
+                        RoundedRectangle(cornerRadius: 7)
+                            .strokeBorder(tint.opacity(0.5))
+                            .allowsHitTesting(false)
+                    }
+                }
+                .overlay(alignment: .topTrailing) {
+                    if selected {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 6, weight: .bold))
+                            .foregroundStyle(tint)
+                            .padding(3)
+                            .accessibilityHidden(true)
+                    }
+                }
+                .overlay(alignment: .bottom) {
+                    if hasTasks {
+                        Circle().fill(.red)
+                            .frame(width: 5, height: 5)
+                            .padding(.bottom, 3)
+                            .allowsHitTesting(false)
+                            .accessibilityHidden(true)
+                    }
+                }
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(day, format: .dateTime.year().month().day().weekday()))
+        .accessibilityValue(hasTasks ? "已有待办" : "")
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    private func monthButton(_ offset: Int, label: String, symbol: String) -> some View {
+        Button {
+            displayedMonth = calendar.date(byAdding: .month, value: offset, to: monthStart)
+        } label: {
+            Image(systemName: symbol)
+                .font(.system(size: 10, weight: .semibold))
+                .frame(width: 25, height: 25)
+                .background(.primary.opacity(0.055), in: .rect(cornerRadius: 6))
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+    }
+
+    private func shortcut(_ title: String, systemImage: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(tint)
+                .frame(maxWidth: .infinity)
+                .frame(height: 27)
+                .background(tint.opacity(0.1), in: .capsule)
+                .contentShape(.capsule)
+        }
+        .buttonStyle(.plain)
     }
 }

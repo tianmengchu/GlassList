@@ -408,6 +408,7 @@ struct ReminderSettingsView: View {
             .padding(.bottom, 24)
             .frame(maxWidth: .infinity)
         }
+        .scrollIndicators(.hidden)
         .labeledContentStyle(SettingsRowStyle())
         .background(appPalette?.background.swatch ?? Color.clear)
         .task(id: scenePhase) {

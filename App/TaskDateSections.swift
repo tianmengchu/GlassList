@@ -127,6 +127,7 @@ struct TaskDateSections<Row: View>: View {
                 }
                 .padding(.vertical, 1)
             }
+            .scrollIndicators(.hidden)
             .defaultScrollAnchor(.top)
             .onChange(of: dates.jump, initial: true) { _, jump in
                 if let jump { scroll.scrollTo(jump.group, anchor: .top) }
