@@ -8,7 +8,7 @@ private let widgetLog = Logger(subsystem: GlassList.widgetKind, category: "Inter
 
 struct CompleteTaskIntent: AppIntent {
     static let title: LocalizedStringResource = "完成待办"
-    static let description = IntentDescription("在一个完美的todolistG中勾选一条待办。")
+    static let description = IntentDescription("在一个完美的todolist中勾选一条待办。")
     static let isDiscoverable = false
     static var supportedModes: IntentModes { .background }
     @available(macOS 27.0, *)
@@ -126,7 +126,7 @@ enum WidgetSize: String, Sendable {
 
 struct SetWidgetAppearanceIntent: AppIntent {
     static let title: LocalizedStringResource = "切换小组件外观"
-    static let description = IntentDescription("更改这个尺寸的一个完美的todolistG小组件的显示模式。")
+    static let description = IntentDescription("更改这个尺寸的一个完美的todolist小组件的显示模式。")
     static let isDiscoverable = false
     static var supportedModes: IntentModes { .background }
     @available(macOS 27.0, *)

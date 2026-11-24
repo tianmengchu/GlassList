@@ -186,7 +186,7 @@ struct TaskListView: View {
                     .frame(width: 34, height: 34)
                     .background(accent.opacity(0.13), in: .rect(cornerRadius: 11))
                     .accessibilityHidden(true)
-                Text("一个完美的todolistG")
+                Text("一个完美的todolist")
                     .font(.system(size: 16, weight: .semibold))
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)

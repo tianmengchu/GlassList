@@ -139,7 +139,7 @@ struct TaskWidgetView: View {
                 .widgetAccentable()
                 .accessibilityHidden(true)
 
-            Text("一个完美的todolistG")
+            Text("一个完美的todolist")
                 .font(.system(size: 12, weight: .semibold))
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
@@ -288,7 +288,7 @@ struct TaskWidget: Widget {
         StaticConfiguration(kind: GlassList.widgetKind, provider: TaskProvider()) { entry in
             TaskWidgetView(entry: entry)
         }
-        .configurationDisplayName("一个完美的todolistG")
+        .configurationDisplayName("一个完美的todolist")
         .description("在桌面查看待办、时间和备注，并直接勾选完成。")
         .containerBackgroundRemovable(true)
         .contentMarginsDisabled()

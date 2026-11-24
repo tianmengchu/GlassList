@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleDisplayName</key>
-    <string>一个完美的todolistG</string>
+    <string>一个完美的todolist</string>
     <key>GlassListAppGroup</key>
     <string>$(GLASSLIST_APP_GROUP)</string>
     <key>NSExtension</key>
