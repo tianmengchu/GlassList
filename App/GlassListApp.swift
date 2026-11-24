@@ -9,6 +9,7 @@ struct GlassListApp: App {
     @NSApplicationDelegateAdaptor(GlassListLifecycle.self) private var lifecycle
     @FocusedValue(\.todoComposer) private var todoComposer
     @FocusedValue(\.showListSettings) private var showListSettings
+    @FocusedValue(\.showSearch) private var showSearch
     @State private var shortcutSettings = ReminderShortcutSettings()
     @State private var updates = AppUpdates()
     @State private var model = TaskListModel()
@@ -38,6 +39,11 @@ struct GlassListApp: App {
                 Button("新建待办") { todoComposer?.wrappedValue = true }
                     .keyboardShortcut("n", modifiers: .command)
                     .disabled(todoComposer == nil)
+            }
+            CommandGroup(after: .textEditing) {
+                Button("搜索待办") { showSearch?.wrappedValue = true }
+                    .keyboardShortcut("f", modifiers: .command)
+                    .disabled(showSearch == nil)
             }
         }
 
@@ -99,4 +105,5 @@ private final class GlassListLifecycle: NSObject, NSApplicationDelegate, UNUserN
 extension FocusedValues {
     @Entry var todoComposer: Binding<Bool>?
     @Entry var showListSettings: Binding<Bool>?
+    @Entry var showSearch: Binding<Bool>?
 }

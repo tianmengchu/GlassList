@@ -225,8 +225,22 @@ struct ReminderSettingsView: View {
                     }
                     if let update = updates.available {
                         LabeledContent("可用更新", value: update.version)
-                        Link(update.downloadURL == nil ? "查看 \(update.version) 发布页" : "下载 \(update.version) 安装包",
-                             destination: update.destination)
+                        if let notes = update.notes {
+                            Text(notes)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(10)
+                                .background(.primary.opacity(0.04), in: .rect(cornerRadius: 8))
+                        }
+                        HStack(spacing: 12) {
+                            Link(update.downloadURL == nil ? "查看 \(update.version) 发布页" : "下载 \(update.version) 安装包",
+                                 destination: update.destination)
+                            if update.downloadURL != nil {
+                                Link("查看发布说明", destination: update.releaseURL)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
                     }
                     if let statusMessage = updates.statusMessage {
                         Text(statusMessage)

@@ -46,11 +46,14 @@ struct TaskListView: View {
     @Environment(ReminderShortcutSettings.self) private var detailSettings
     @Environment(TaskListModel.self) private var model
     @Environment(WindowDock.self) private var windowDock
+    @Environment(AppUpdates.self) private var updates
     @AppStorage("windowDisplayMode") private var displayMode: DisplayMode = .system
     @AppStorage("strikeCompletedOnHome") private var strikeCompletedOnHome = false
     @AppStorage("homeCompletedRetentionDays") private var retentionDays = 0
     @State private var filter: ListFilter = .pending
     @State private var draft = ""
+    @State private var searchQuery = ""
+    @State private var showingSearch = false
     @State private var editTask: Todo?
     @State private var showNewTask = false
     @State private var showingSettings = false
@@ -58,16 +61,27 @@ struct TaskListView: View {
     @State private var dates = TaskDatePresentation()
     @State private var lookingAtDate = Date.now
     @State private var showingDatePicker = false
+    @State private var dismissedUpdateVersion: String?
+    @State private var recentlyDeleted: TaskListModel.DeletedTask?
+    @State private var undoHideTask: Task<Void, Never>?
     @FocusState private var composerFocused: Bool
+    @FocusState private var searchFocused: Bool
 
     private var palette: AppPalette { detailSettings.theme.palette(for: displayMode.colorScheme ?? scheme) }
     private var accent: Color { palette.accent.swatch }
     private var controlFill: Color { palette.surface.swatch }
+    private var trimmedSearch: String { searchQuery.trimmingCharacters(in: .whitespacesAndNewlines) }
     private func visibleTasks(at date: Date) -> [Todo] {
-        if filter == .pending {
-            return model.homeTasks(at: date, includeCompleted: strikeCompletedOnHome, retentionDays: retentionDays)
+        let base: [Todo] = if filter == .pending {
+            model.homeTasks(at: date, includeCompleted: strikeCompletedOnHome, retentionDays: retentionDays)
+        } else {
+            model.tasks.filter(filter.contains)
         }
-        return model.tasks.filter(filter.contains)
+        guard !trimmedSearch.isEmpty else { return base }
+        return base.filter {
+            $0.title.localizedCaseInsensitiveContains(trimmedSearch)
+                || ($0.note?.localizedCaseInsensitiveContains(trimmedSearch) ?? false)
+        }
     }
     private var doneCount: Int { model.tasks.count(where: \.isDone) }
     private let dateFormat = Date.VerbatimFormatStyle(
@@ -111,8 +125,15 @@ struct TaskListView: View {
         .tint(accent)
         .focusedSceneValue(\.todoComposer, $showNewTask)
         .focusedSceneValue(\.showListSettings, $showingSettings)
+        .focusedSceneValue(\.showSearch, $showingSearch)
         .onChange(of: showNewTask) { _, isPresented in
             if isPresented { showingSettings = false }
+        }
+        .onChange(of: showingSearch) { _, isPresented in
+            if isPresented {
+                showingSettings = false
+                searchFocused = true
+            }
         }
         .task { model.reload(refreshWidget: true) }
         .onChange(of: scenePhase) { _, phase in
@@ -195,11 +216,22 @@ struct TaskListView: View {
         VStack(alignment: .leading, spacing: 5) {
             Rectangle().fill(palette.text.swatch.opacity(0.08)).frame(height: 1)
                 .accessibilityHidden(true)
-            Text("日期")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .accessibilityAddTraits(.isHeader)
-                .padding(.horizontal, 8)
+            HStack {
+                Text("日期")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .accessibilityAddTraits(.isHeader)
+                Spacer()
+                Button("今天") {
+                    showingSettings = false
+                    dates.reveal(.day(calendar.startOfDay(for: now)))
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(accent)
+                .help("跳转到今天")
+            }
+            .padding(.horizontal, 8)
             ScrollViewReader { scroll in
                 ScrollView {
                     LazyVStack(spacing: 2) {
@@ -354,15 +386,135 @@ struct TaskListView: View {
     }
 
     private func mainPanel(tasks: [Todo], groups: [TaskDateGroup], now: Date) -> some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 14) {
             header(now: now)
+            if let update = updates.available, dismissedUpdateVersion != update.version {
+                updateBanner(update)
+            }
+            if showingSearch {
+                searchBar
+            }
             listContent(tasks, groups: groups, now: now)
                 .frame(maxHeight: .infinity)
-            composer
+            if let deleted = recentlyDeleted {
+                undoBar(deleted)
+            }
+            Rectangle()
+                .fill(palette.text.swatch.opacity(0.07))
+                .frame(height: 1)
+                .accessibilityHidden(true)
+            composer(now: now)
         }
         .padding(.horizontal, 32)
         .padding(.top, 50)
         .padding(.bottom, 24)
+    }
+
+    private func updateBanner(_ update: AppUpdates.Update) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "arrow.down.circle.fill")
+                .font(.system(size: 14))
+                .foregroundStyle(accent)
+                .accessibilityHidden(true)
+            Text("发现新版本 \(update.version)")
+                .font(.system(size: 12, weight: .semibold))
+            Spacer(minLength: 8)
+            Link(update.downloadURL == nil ? "查看发布页" : "下载更新", destination: update.destination)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(accent)
+            Button {
+                dismissedUpdateVersion = update.version
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(palette.secondaryText)
+                    .frame(width: 20, height: 20)
+                    .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("暂时忽略更新提示")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(accent.opacity(0.10), in: .rect(cornerRadius: 10))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10)
+                .strokeBorder(accent.opacity(0.24))
+                .allowsHitTesting(false)
+        }
+    }
+
+    private var searchBar: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(palette.secondaryText)
+                .accessibilityHidden(true)
+            TextField("搜索待办标题或备注…", text: $searchQuery)
+                .font(.system(size: 13))
+                .textFieldStyle(.plain)
+                .focused($searchFocused)
+                .onExitCommand { closeSearch() }
+            if !searchQuery.isEmpty {
+                Button {
+                    searchQuery = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(palette.secondaryText)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("清空搜索")
+            }
+            Button("取消") { closeSearch() }
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(palette.secondaryText)
+                .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 12)
+        .frame(height: 36)
+        .background(controlFill, in: .rect(cornerRadius: 10))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10)
+                .strokeBorder(searchFocused ? accent.opacity(0.65) : palette.text.swatch.opacity(0.11))
+                .allowsHitTesting(false)
+        }
+    }
+
+    private func closeSearch() {
+        searchQuery = ""
+        showingSearch = false
+        searchFocused = false
+    }
+
+    private func undoBar(_ deleted: TaskListModel.DeletedTask) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "trash")
+                .font(.system(size: 12))
+                .foregroundStyle(palette.secondaryText)
+                .accessibilityHidden(true)
+            Text("已删除「\(deleted.task.title)」")
+                .font(.system(size: 12, weight: .medium))
+                .lineLimit(1)
+            Spacer(minLength: 8)
+            Button("撤销") {
+                undoHideTask?.cancel()
+                undoHideTask = nil
+                model.restore(deleted)
+                recentlyDeleted = nil
+            }
+            .buttonStyle(.plain)
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(accent)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(controlFill, in: .rect(cornerRadius: 10))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10)
+                .strokeBorder(palette.text.swatch.opacity(0.12))
+                .allowsHitTesting(false)
+        }
     }
 
     private var settingsPanel: some View {
@@ -385,6 +537,8 @@ struct TaskListView: View {
     private func listContent(_ visibleTasks: [Todo], groups: [TaskDateGroup], now: Date) -> some View {
         if model.loadFailed {
             emptyState(symbol: "exclamationmark", title: "清单暂不可用", detail: "请返回应用后再试一次。")
+        } else if !trimmedSearch.isEmpty && visibleTasks.isEmpty {
+            emptyState(symbol: "magnifyingglass", title: "没有找到匹配的待办", detail: "换个关键词试试，或按 Esc 清除搜索。")
         } else if visibleTasks.isEmpty && dates.jump == nil {
             switch filter {
             case .pending:
@@ -437,6 +591,23 @@ struct TaskListView: View {
 
     private func headerActions(now: Date) -> some View {
         HStack(spacing: 8) {
+            Button {
+                if showingSearch {
+                    closeSearch()
+                } else {
+                    showingSearch = true
+                    searchFocused = true
+                }
+            } label: {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(showingSearch ? accent : palette.text.swatch)
+                    .modifier(HeaderActionChrome(palette: palette))
+            }
+            .buttonStyle(.plain)
+            .help("搜索待办 (⌘F)")
+            .accessibilityLabel("搜索待办")
+
             datePickerButton(now: now)
 
             Menu {
@@ -463,8 +634,18 @@ struct TaskListView: View {
             } label: {
                 headerActionContent("设置", symbol: "gearshape")
                     .modifier(HeaderActionChrome(palette: palette))
+                    .overlay(alignment: .topTrailing) {
+                        if updates.available != nil {
+                            Circle()
+                                .fill(.red)
+                                .frame(width: 7, height: 7)
+                                .offset(x: 2, y: -2)
+                                .accessibilityHidden(true)
+                        }
+                    }
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(updates.available == nil ? "设置" : "设置（有可用更新）")
         }
         .fixedSize(horizontal: true, vertical: false)
     }
@@ -534,10 +715,89 @@ struct TaskListView: View {
     }
 
     private func taskRow(_ task: Todo) -> some View {
+        TaskRowCard(
+            task: task,
+            palette: palette,
+            detailColors: detailSettings.colors,
+            showsCountdown: detailSettings.display.showsCountdown,
+            toggleDone: { model.setDone(task, to: !task.isDone) },
+            edit: { editTask = task },
+            delete: { deleteTask(task) }
+        )
+    }
+
+    private func deleteTask(_ task: Todo) {
+        guard let deleted = model.deleteReturning(task.id) else { return }
+        undoHideTask?.cancel()
+        recentlyDeleted = deleted
+        undoHideTask = Task {
+            try? await Task.sleep(for: .seconds(4))
+            guard !Task.isCancelled else { return }
+            recentlyDeleted = nil
+        }
+    }
+
+    private func quickAddTask(now: Date) {
+        let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            showNewTask = true
+            return
+        }
+        let today = calendar.startOfDay(for: now)
+        guard model.saveTask(id: nil, title: trimmed, reminder: nil, day: today, note: "") else { return }
+        draft = ""
+        if filter == .completed { filter = .pending }
+        dates.reveal(.day(today))
+    }
+
+    private func composer(now: Date) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "plus")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(accent)
+                .accessibilityHidden(true)
+
+            TextField("添加一条待办，回车快速记到今天…", text: $draft)
+                .font(.system(size: 14))
+                .textFieldStyle(.plain)
+                .focused($composerFocused)
+                .onSubmit { quickAddTask(now: now) }
+
+            Button("详细") { showNewTask = true }
+                .font(.system(size: 12, weight: .semibold))
+                .buttonStyle(ThemeButtonStyle(prominent: true))
+                .help("打开完整编辑窗口，设置提醒时间和备注 (⌘N)")
+        }
+        .padding(.leading, 17)
+        .padding(.trailing, 8)
+        .frame(height: 48)
+        .background(controlFill, in: .rect(cornerRadius: 15))
+        .overlay {
+            RoundedRectangle(cornerRadius: 15)
+                .strokeBorder(composerFocused ? accent.opacity(0.7) : .primary.opacity(0.10))
+                .allowsHitTesting(false)
+        }
+    }
+
+}
+
+private struct TaskRowCard: View {
+    let task: Todo
+    let palette: AppPalette
+    let detailColors: DetailColors
+    let showsCountdown: Bool
+    let toggleDone: () -> Void
+    let edit: () -> Void
+    let delete: () -> Void
+
+    @State private var isHovered = false
+
+    private var accent: Color { palette.accent.swatch }
+    private var hasDetails: Bool { task.scheduledDate != nil || task.note != nil }
+
+    var body: some View {
         HStack(alignment: .top, spacing: 9) {
-            Button {
-                model.setDone(task, to: !task.isDone)
-            } label: {
+            Button(action: toggleDone) {
                 Image(systemName: task.isDone ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 19, weight: .regular))
                     .foregroundStyle(task.isDone ? accent : palette.secondaryText)
@@ -553,39 +813,60 @@ struct TaskListView: View {
                     .strikethrough(task.isDone)
                     .foregroundStyle(task.isDone ? .secondary : .primary)
                     .fixedSize(horizontal: false, vertical: true)
-                    .onTapGesture(count: 2) { editTask = task }
-                HStack(alignment: .top, spacing: 7) {
-                    DetailTag(symbol: task.reminderAt == nil ? "calendar" : "clock", tint: detailSettings.colors.time.swatch) {
+                    .padding(.top, hasDetails ? 2 : 6)
+                    .onTapGesture(count: 2, perform: edit)
+                if hasDetails {
+                    HStack(alignment: .top, spacing: 7) {
                         if let time = task.reminderAt {
-                            Text(time, format: .dateTime.year().month(.defaultDigits).day().hour().minute())
+                            DetailTag(symbol: "clock", tint: detailColors.time.swatch) {
+                                Text(time, format: .dateTime.year().month(.defaultDigits).day().hour().minute())
+                            }
+                            .layoutPriority(1)
                         } else if let day = task.scheduledDay {
-                            Text(day, format: .dateTime.year().month(.defaultDigits).day())
-                        } else {
-                            Text("未安排日期")
+                            DetailTag(symbol: "calendar", tint: detailColors.time.swatch) {
+                                Text(day, format: .dateTime.year().month(.defaultDigits).day())
+                            }
+                            .layoutPriority(1)
+                        }
+                        if let note = task.note {
+                            DetailTag(symbol: "note.text", tint: detailColors.note.swatch, lineLimit: 2) {
+                                Text(note)
+                            }
+                            .help(note)
                         }
                     }
-                    .layoutPriority(1)
-                    DetailTag(symbol: "note.text", tint: detailSettings.colors.note.swatch, lineLimit: 2) {
-                        Text(task.note ?? "无备注")
-                    }
-                    .help(task.note ?? "无备注")
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
             VStack(alignment: .trailing, spacing: 7) {
-                Menu {
-                    taskActions(task)
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.system(size: 14, weight: .semibold))
-                        .frame(width: 24, height: 23)
+                HStack(spacing: 4) {
+                    if isHovered {
+                        Button(action: edit) {
+                            Image(systemName: "pencil")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(accent)
+                                .frame(width: 24, height: 23)
+                                .background(accent.opacity(0.11), in: .rect(cornerRadius: 6))
+                                .contentShape(.rect)
+                        }
+                        .buttonStyle(.plain)
+                        .help("编辑待办")
+                        .accessibilityLabel("编辑待办：\(task.title)")
+                    }
+                    Menu {
+                        actions
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 14, weight: .semibold))
+                            .frame(width: 24, height: 23)
+                    }
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
+                    .fixedSize()
+                    .accessibilityLabel("待办操作")
                 }
-                .menuStyle(.borderlessButton)
-                .menuIndicator(.hidden)
-                .fixedSize()
-                .accessibilityLabel("待办操作")
-                if detailSettings.display.showsCountdown, let time = task.reminderAt, !task.isDone {
+                if showsCountdown, let time = task.reminderAt, !task.isDone {
                     TaskDueCountdown(date: time)
                         .frame(width: 108, alignment: .trailing)
                 }
@@ -593,42 +874,19 @@ struct TaskListView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 10)
-        .background(controlFill, in: .rect(cornerRadius: 13))
-        .contextMenu { taskActions(task) }
+        .background(palette.surface.swatch, in: .rect(cornerRadius: 13))
+        .overlay {
+            RoundedRectangle(cornerRadius: 13)
+                .strokeBorder(isHovered ? accent.opacity(0.32) : palette.text.swatch.opacity(0.05))
+                .allowsHitTesting(false)
+        }
+        .onHover { isHovered = $0 }
+        .contextMenu { actions }
     }
 
     @ViewBuilder
-    private func taskActions(_ task: Todo) -> some View {
-        Button("编辑待办…", systemImage: "pencil") { editTask = task }
-        Button("删除", systemImage: "trash", role: .destructive) { model.delete(task.id) }
+    private var actions: some View {
+        Button("编辑待办…", systemImage: "pencil", action: edit)
+        Button("删除", systemImage: "trash", role: .destructive, action: delete)
     }
-
-    private var composer: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "plus")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(accent)
-                .accessibilityHidden(true)
-
-            TextField("添加一条待办…", text: $draft)
-                .font(.system(size: 14))
-                .textFieldStyle(.plain)
-                .focused($composerFocused)
-                .onSubmit { showNewTask = true }
-
-            Button("添加") { showNewTask = true }
-                .font(.system(size: 12, weight: .semibold))
-                .buttonStyle(ThemeButtonStyle(prominent: true))
-        }
-        .padding(.leading, 17)
-        .padding(.trailing, 8)
-        .frame(height: 48)
-        .background(controlFill, in: .rect(cornerRadius: 15))
-        .overlay {
-            RoundedRectangle(cornerRadius: 15)
-                .strokeBorder(composerFocused ? accent.opacity(0.7) : .primary.opacity(0.10))
-                .allowsHitTesting(false)
-        }
-    }
-
 }

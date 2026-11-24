@@ -4,10 +4,11 @@ import Observation
 @MainActor
 @Observable
 final class AppUpdates {
-    struct Update {
+    struct Update: Equatable {
         let version: String
         let releaseURL: URL
         let downloadURL: URL?
+        let notes: String?
 
         var destination: URL { downloadURL ?? releaseURL }
     }
@@ -22,7 +23,7 @@ final class AppUpdates {
     private(set) var available: Update?
     private(set) var statusMessage: String?
     private(set) var isChecking = false
-    private(set) var automaticallyChecks = UserDefaults.standard.bool(forKey: AppUpdates.automaticChecksKey)
+    private(set) var automaticallyChecks = (UserDefaults.standard.object(forKey: AppUpdates.automaticChecksKey) as? Bool) ?? true
     @ObservationIgnored private var automaticCheckTask: Task<Void, Never>?
     @ObservationIgnored private var apiRetryAt: Date?
 
@@ -136,7 +137,7 @@ final class AppUpdates {
             return verified.min { $0.0 < $1.0 }?.1
         }
         try Task.checkCancellation()
-        available = Update(version: latest.label, releaseURL: page, downloadURL: download)
+        available = Update(version: latest.label, releaseURL: page, downloadURL: download, notes: nil)
     }
 
     private nonisolated static func head(_ url: URL) async throws -> HTTPURLResponse {
@@ -157,7 +158,9 @@ final class AppUpdates {
         guard hasNewVersion(latest) else { return }
         let page = Self.releasePage.appending(path: "tag").appending(path: release.tagName)
         let download = release.macDownload(version: latest.label)
-        available = Update(version: latest.label, releaseURL: page, downloadURL: download)
+        let trimmedNotes = release.body?.trimmingCharacters(in: .whitespacesAndNewlines)
+        available = Update(version: latest.label, releaseURL: page, downloadURL: download,
+                           notes: trimmedNotes?.isEmpty == false ? trimmedNotes : nil)
         if download == nil {
             statusMessage = "此版本暂未提供 macOS 安装包。"
         }
@@ -211,10 +214,11 @@ private struct Release: Decodable {
     let tagName: String
     let draft: Bool
     let prerelease: Bool
+    let body: String?
     let assets: [Asset]
 
     enum CodingKeys: String, CodingKey {
-        case draft, prerelease, assets
+        case draft, prerelease, body, assets
         case tagName = "tag_name"
     }
 

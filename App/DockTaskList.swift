@@ -30,6 +30,8 @@ struct DockTaskList: View {
     @State private var editor: Editor?
     @State private var showingDatePicker = false
     @State private var saveMessage: String?
+    @State private var recentlyDeleted: TaskListModel.DeletedTask?
+    @State private var undoHideTask: Task<Void, Never>?
     @FocusState private var composerFocused: Bool
 
     private let radius: CGFloat = 20
@@ -94,7 +96,26 @@ struct DockTaskList: View {
                     }
                 }
             }
-            if let message = errorMessage ?? saveMessage {
+            if let deleted = recentlyDeleted {
+                HStack(spacing: 8) {
+                    Text("已删除「\(deleted.task.title)」")
+                        .font(.caption)
+                        .lineLimit(1)
+                    Spacer(minLength: 4)
+                    Button("撤销") {
+                        undoHideTask?.cancel()
+                        undoHideTask = nil
+                        model.restore(deleted, reportError: false)
+                        recentlyDeleted = nil
+                    }
+                    .buttonStyle(.plain)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(accent)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(surface, in: .rect(cornerRadius: 8))
+            } else if let message = errorMessage ?? saveMessage {
                 Text(message)
                     .font(.caption)
                     .foregroundStyle(errorMessage == nil ? palette.secondaryText : .red)
@@ -169,20 +190,34 @@ struct DockTaskList: View {
 
     private var composer: some View {
         HStack(spacing: 8) {
-            TextField("添加一条待办…", text: $draft)
+            TextField("添加待办，回车快速记到今天…", text: $draft)
                 .textFieldStyle(.plain)
                 .font(.system(size: 13))
                 .focused($composerFocused)
-                .onSubmit { openEditor(.new) }
+                .onSubmit { quickAddTask() }
                 .onExitCommand { composerFocused = false }
 
-            Button("添加", systemImage: "plus") { openEditor(.new) }
+            Button("详细", systemImage: "plus") { openEditor(.new) }
                 .buttonStyle(ThemeButtonStyle(prominent: true))
                 .controlSize(.small)
+                .help("打开完整编辑面板，设置提醒时间和备注")
         }
         .padding(.horizontal, 9)
         .frame(minHeight: 35)
         .dockInputSurface(tint: accent, fill: surface, focused: composerFocused)
+    }
+
+    private func quickAddTask() {
+        let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            openEditor(.new)
+            return
+        }
+        let today = calendar.startOfDay(for: .now)
+        let saved = saveTask(id: nil, title: trimmed, reminder: nil, day: today, note: "")
+        if !saved {
+            errorMessage = "无法保存待办，请重试。"
+        }
     }
 
     private func openEditor(_ destination: Editor) {
@@ -282,9 +317,20 @@ struct DockTaskList: View {
         .contextMenu {
             Button("编辑待办…", systemImage: "pencil") { openEditor(.edit(task)) }
             Button("删除", systemImage: "trash", role: .destructive) {
-                let deleted = model.delete(task.id, reportError: false)
-                saveMessage = nil
-                errorMessage = deleted ? nil : "无法删除待办，请重试。"
+                if let deleted = model.deleteReturning(task.id, reportError: false) {
+                    saveMessage = nil
+                    errorMessage = nil
+                    undoHideTask?.cancel()
+                    recentlyDeleted = deleted
+                    undoHideTask = Task {
+                        try? await Task.sleep(for: .seconds(4))
+                        guard !Task.isCancelled else { return }
+                        recentlyDeleted = nil
+                    }
+                } else {
+                    saveMessage = nil
+                    errorMessage = "无法删除待办，请重试。"
+                }
             }
         }
     }

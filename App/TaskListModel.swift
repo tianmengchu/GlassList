@@ -97,9 +97,32 @@ final class TaskListModel {
         }
     }
 
+    struct DeletedTask: Equatable {
+        let task: Todo
+        let index: Int
+    }
+
     @discardableResult
     func delete(_ id: UUID, reportError: Bool = true) -> Bool {
-        change(reportError: reportError) { $0.removeAll { $0.id == id } }
+        deleteReturning(id, reportError: reportError) != nil
+    }
+
+    func deleteReturning(_ id: UUID, reportError: Bool = true) -> DeletedTask? {
+        var removed: DeletedTask?
+        let saved = change(reportError: reportError) { tasks in
+            guard let index = tasks.firstIndex(where: { $0.id == id }) else { return }
+            removed = DeletedTask(task: tasks.remove(at: index), index: index)
+        }
+        return saved ? removed : nil
+    }
+
+    @discardableResult
+    func restore(_ deleted: DeletedTask, reportError: Bool = true) -> Bool {
+        change(reportError: reportError) { tasks in
+            guard !tasks.contains(where: { $0.id == deleted.task.id }) else { return }
+            let target = min(max(0, deleted.index), tasks.count)
+            tasks.insert(deleted.task, at: target)
+        }
     }
 
     @discardableResult
