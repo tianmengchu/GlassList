@@ -8,7 +8,7 @@ private let widgetLog = Logger(subsystem: GlassList.widgetKind, category: "Inter
 
 struct CompleteTaskIntent: AppIntent {
     static let title: LocalizedStringResource = "完成待办"
-    static let description = IntentDescription("在一个完美的todolist中勾选一条待办。")
+    static let description = IntentDescription("在一个完美的todolistG中勾选一条待办。")
     static let isDiscoverable = false
     static var supportedModes: IntentModes { .background }
     @available(macOS 27.0, *)
@@ -41,9 +41,15 @@ struct CompleteTaskIntent: AppIntent {
 
 actor TaskReminders {
     static let shared = TaskReminders()
-    private let prefix = "todo-reminder-"
+    static let identifierPrefix = "todo-reminder-"
+    private let prefix = TaskReminders.identifierPrefix
     private var needsSync = false
     private var syncing = false
+
+    static func taskID(fromNotification identifier: String) -> UUID? {
+        guard identifier.hasPrefix(identifierPrefix) else { return nil }
+        return UUID(uuidString: String(identifier.dropFirst(identifierPrefix.count)))
+    }
 
     func sync() async {
         guard Bundle.main.bundleIdentifier == GlassList.bundleID else { return }
@@ -120,7 +126,7 @@ enum WidgetSize: String, Sendable {
 
 struct SetWidgetAppearanceIntent: AppIntent {
     static let title: LocalizedStringResource = "切换小组件外观"
-    static let description = IntentDescription("更改这个尺寸的一个完美的todolist小组件的显示模式。")
+    static let description = IntentDescription("更改这个尺寸的一个完美的todolistG小组件的显示模式。")
     static let isDiscoverable = false
     static var supportedModes: IntentModes { .background }
     @available(macOS 27.0, *)

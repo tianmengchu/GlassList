@@ -33,7 +33,7 @@
 		000000000000000000000002 = {
 			isa = "PBXNativeTarget";
 			name = "GlassList";
-			productName = "一个完美的todolist";
+			productName = "一个完美的todolistG";
 			productReference = 000000000000000000000004;
 			productType = "com.apple.product-type.application";
 			buildConfigurationList = 000000000000000000000017;
@@ -62,7 +62,7 @@
 		};
 		000000000000000000000004 = {
 			isa = "PBXFileReference";
-			path = "一个完美的todolist.app";
+			path = "一个完美的todolistG.app";
 			lastKnownFileType = "wrapper.application";
 			sourceTree = "BUILT_PRODUCTS_DIR";
 		};
@@ -199,7 +199,7 @@
 				GENERATE_INFOPLIST_FILE = "YES";
 				INFOPLIST_FILE = "App/Info.plist";
 				PRODUCT_BUNDLE_IDENTIFIER = "com.tian.glasslist";
-				PRODUCT_NAME = "一个完美的todolist";
+				PRODUCT_NAME = "一个完美的todolistG";
 			};
 		};
 		000000000000000000000016 = {
@@ -210,7 +210,7 @@
 				GENERATE_INFOPLIST_FILE = "YES";
 				INFOPLIST_FILE = "App/Info.plist";
 				PRODUCT_BUNDLE_IDENTIFIER = "com.tian.glasslist";
-				PRODUCT_NAME = "一个完美的todolist";
+				PRODUCT_NAME = "一个完美的todolistG";
 			};
 		};
 		000000000000000000000017 = {
@@ -263,12 +263,12 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = "Manual";
 				CODE_SIGN_IDENTITY = "-";
-				CURRENT_PROJECT_VERSION = "37";
+				CURRENT_PROJECT_VERSION = "38";
 				GLASSLIST_APP_GROUP = "group.com.tian.glasslist";
 				ALWAYS_SEARCH_USER_PATHS = "NO";
 				COPY_PHASE_STRIP = "NO";
 				MACOSX_DEPLOYMENT_TARGET = "26.0";
-				MARKETING_VERSION = "2.5.7";
+				MARKETING_VERSION = "3.0.0";
 				SDKROOT = "macosx";
 				SWIFT_VERSION = "6.0";
 				DEBUG_INFORMATION_FORMAT = "dwarf";
@@ -282,12 +282,12 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = "Manual";
 				CODE_SIGN_IDENTITY = "-";
-				CURRENT_PROJECT_VERSION = "37";
+				CURRENT_PROJECT_VERSION = "38";
 				GLASSLIST_APP_GROUP = "group.com.tian.glasslist";
 				ALWAYS_SEARCH_USER_PATHS = "NO";
 				COPY_PHASE_STRIP = "NO";
 				MACOSX_DEPLOYMENT_TARGET = "26.0";
-				MARKETING_VERSION = "2.5.7";
+				MARKETING_VERSION = "3.0.0";
 				SDKROOT = "macosx";
 				SWIFT_VERSION = "6.0";
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";

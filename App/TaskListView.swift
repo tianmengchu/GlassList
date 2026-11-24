@@ -142,6 +142,11 @@ struct TaskListView: View {
         } message: {
             Text("暂时无法写入本地清单。请稍后重试。")
         }
+        .alert("已修复待办清单", isPresented: $model.showRecoveryNotice) {
+            Button("好", role: .cancel) {}
+        } message: {
+            Text("本地清单文件已损坏，已恢复所有可读取的待办。原文件已备份为 list.damaged-日期.json，与清单保存在同一文件夹。")
+        }
         .alert("无法更改待办日期", isPresented: $showMoveError) {
             Button("好", role: .cancel) {}
         } message: {
@@ -160,7 +165,7 @@ struct TaskListView: View {
                     .frame(width: 34, height: 34)
                     .background(accent.opacity(0.13), in: .rect(cornerRadius: 11))
                     .accessibilityHidden(true)
-                Text("一个完美的todolist")
+                Text("一个完美的todolistG")
                     .font(.system(size: 16, weight: .semibold))
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)

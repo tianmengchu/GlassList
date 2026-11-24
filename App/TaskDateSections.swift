@@ -23,7 +23,12 @@ struct TaskDateGroup: Identifiable {
         }
         let orderedDays: [Date]
         if let visibleDays {
-            orderedDays = [today] + visibleDays.subtracting([today]).sorted()
+            // Earlier days with unfinished tasks always show, so overdue items never drop out of view.
+            let overdue = byDay.compactMap { day, items in
+                day.flatMap { $0 < today && items.contains { !$0.isDone } ? $0 : nil }
+            }
+            let upcoming = visibleDays.filter { $0 > today }
+            orderedDays = overdue.sorted() + [today] + upcoming.sorted()
         } else {
             var days = Set(byDay.keys.compactMap { $0 })
             days.formUnion([today, tomorrow, additionalDay].compactMap { $0 })
@@ -44,7 +49,13 @@ struct TaskDateGroup: Identifiable {
         if calendar.isDate(day, inSameDayAs: now) { return "今天 · \(label)" }
         if let tomorrow = calendar.date(byAdding: .day, value: 1, to: now),
            calendar.isDate(day, inSameDayAs: tomorrow) { return "明天 · \(label)" }
+        if isOverdue(at: now, calendar: calendar) { return "已过期 · \(label)" }
         return label
+    }
+
+    func isOverdue(at now: Date, calendar: Calendar) -> Bool {
+        guard let day = id.day else { return false }
+        return day < calendar.startOfDay(for: now) && tasks.contains { !$0.isDone }
     }
 
     var dropHelp: String {
@@ -102,7 +113,8 @@ struct TaskDateSections<Row: View>: View {
                 LazyVStack(spacing: compact ? 8 : 14) {
                     ForEach(groups) { group in
                         TaskDateSection(group: group, title: group.title(at: now, calendar: calendar, abbreviated: false),
-                                        tint: tint, compact: compact, expanded: dates.isExpanded(group.id),
+                                        tint: group.isOverdue(at: now, calendar: calendar) ? .red : tint,
+                                        compact: compact, expanded: dates.isExpanded(group.id),
                                         remove: removal(for: group)) {
                             withAnimation(reduceMotion ? nil : .snappy(duration: 0.2)) { dates.toggle(group.id) }
                         } move: { id in
@@ -123,7 +135,8 @@ struct TaskDateSections<Row: View>: View {
     }
 
     private func removal(for group: TaskDateGroup) -> (() -> Void)? {
-        guard let day = group.id.day, let removeDay, !calendar.isDate(day, inSameDayAs: now) else { return nil }
+        // Only upcoming days can be removed; earlier days appear because they still hold unfinished tasks.
+        guard let day = group.id.day, let removeDay, day > calendar.startOfDay(for: now) else { return nil }
         return { removeDay(day) }
     }
 }

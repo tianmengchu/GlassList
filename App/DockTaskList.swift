@@ -120,7 +120,8 @@ struct DockTaskList: View {
                 .buttonStyle(ThemeButtonStyle())
                 .controlSize(.small)
                 .popover(isPresented: $showingDatePicker) {
-                    let taskDays = Set(model.tasks.compactMap(\.scheduledDate).map { calendar.startOfDay(for: $0) })
+                    let taskDays = Set(model.tasks.lazy.filter { !$0.isDone }.compactMap(\.scheduledDate)
+                        .map { calendar.startOfDay(for: $0) })
                     DockDatePicker(now: now, palette: palette, taskDays: taskDays,
                                    selectedDays: Binding(get: { selectedDays }, set: storeDates),
                                    reset: { resetDates(now: now) },
@@ -136,10 +137,13 @@ struct DockTaskList: View {
         return gregorian
     }
 
+    /// Days the user added to the side list. Days that have already passed are dropped, so old
+    /// selections don't pile up; past days with unfinished tasks still show as overdue groups.
     private var selectedDays: Set<Date> {
         let entries = (try? JSONDecoder().decode([DateComponents].self, from: storedDates)) ?? []
         let gregorian = civilCalendar
-        return Set(entries.compactMap { gregorian.date(from: $0) }.map { calendar.startOfDay(for: $0) })
+        let today = calendar.startOfDay(for: .now)
+        return Set(entries.compactMap { gregorian.date(from: $0) }.map { calendar.startOfDay(for: $0) }.filter { $0 >= today })
     }
 
     private func removeDate(_ date: Date) {
@@ -193,7 +197,7 @@ struct DockTaskList: View {
         if id == nil { draft = "" }
         errorMessage = nil
         if let day = (reminder ?? day).map({ calendar.startOfDay(for: $0) }) {
-            if calendar.isDateInToday(day) || selectedDays.contains(day) {
+            if day <= calendar.startOfDay(for: .now) || selectedDays.contains(day) {
                 dates.reveal(.day(day))
             } else {
                 let label = day.formatted(.dateTime.month().day().locale(Locale(identifier: "zh_CN")))

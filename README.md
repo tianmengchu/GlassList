@@ -1,4 +1,4 @@
-# 一个完美的todolist
+# 一个完美的todolistG
 
 原生 macOS 待办应用，使用 SwiftUI 和 WidgetKit。需要 macOS 26 或更新版本。
 
@@ -13,7 +13,7 @@
 
 在「设置 → 配色」里可以预览并切换主题。日间和夜间可分别调整窗口背景、导航栏、卡片和输入框、文字与强调色。「恢复默认主题」会恢复两套配色。侧边清单右上角的回转箭头会把日期分组恢复为「今天」和「未安排日期」。
 
-关闭主窗口后，一个完美的todolist留在顶部菜单栏。点菜单栏的勾选方框图标，即可打开清单或完全退出。
+关闭主窗口后，一个完美的todolistG留在顶部菜单栏。点菜单栏的勾选方框图标，即可打开清单或完全退出。
 
 在设置的「启动」里，可以分别开启「登录时启动」和「启动时自动贴边」。自动贴边沿用上次选择的方向，首次默认右侧。
 
@@ -23,7 +23,7 @@
 
 设置里的「完成项」可以选择将完成项移到「已完成」，或在首页划线保留。首页完成项可以保留 1 天、7 天、30 天或一直保留，到期后仍可从「已完成」查看或恢复。
 
-在桌面空白处点按右键，选择「编辑小组件」，搜索「一个完美的todolist」，添加系统小组件。小组件显示时钟、事项时间、备注和事项倒计时，可以直接勾选待办。主窗口与小组件在本机共享待办数据和标签配色。系统单色外观会统一处理小组件颜色。
+在桌面空白处点按右键，选择「编辑小组件」，搜索「一个完美的todolistG」，添加系统小组件。小组件显示时钟、事项时间、备注和事项倒计时，可以直接勾选待办。主窗口与小组件在本机共享待办数据和标签配色。系统单色外观会统一处理小组件颜色。
 
 点按系统小组件右上角的外观图标，可依次切换「跟随系统」「日间」和「夜间」。不同尺寸各自记住选择。系统小组件的玻璃底由 macOS 渲染。
 
@@ -42,6 +42,6 @@
 
 应用查询 GitHub 仓库的最新正式 Release。打开「自动检查更新」后，应用会在启动时和运行期间每天检查一次。发现新版后，可在设置或菜单栏点击安装包直链，由默认浏览器下载，再手动安装。 [GitHub Releases API](https://docs.github.com/en/rest/releases/releases#get-the-latest-release)
 
-发布时更新 `MARKETING_VERSION` 和 `CURRENT_PROJECT_VERSION`。用 `v2.3` 这类纯数字版本标签发布，并将对应的 `GlassList-2.3-universal.dmg` 或 `GlassList-2.3-universal.zip` 作为 Release 附件上传。macOS 安装权限由系统按应用的签名和公证状态处理。 [Apple 分发签名说明](https://developer.apple.com/developer-id/)
+发布时更新 `MARKETING_VERSION` 和 `CURRENT_PROJECT_VERSION`。用 `v3.0.0` 这类纯数字版本标签发布，并将对应的 `GlassList-3.0.0-universal.dmg` 或 `GlassList-3.0.0-universal.zip` 作为 Release 附件上传。macOS 安装权限由系统按应用的签名和公证状态处理。 [Apple 分发签名说明](https://developer.apple.com/developer-id/)
 
 `App` 是主窗口，`Widget` 是 WidgetKit 扩展，`Shared` 包含本地存储和小组件的完成操作。

@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import Synchronization
 
 struct Todo: Codable, Identifiable, Equatable, Sendable {
     let id: UUID
@@ -65,10 +66,25 @@ struct TaskDisplaySettings: Codable, Equatable, Sendable {
     var showsCountdown = true
 }
 
+/// Decodes each element on its own so one damaged entry doesn't hide the whole list.
+private struct LossyTodo: Decodable {
+    let value: Todo?
+
+    init(from decoder: Decoder) {
+        value = try? Todo(from: decoder)
+    }
+}
+
 struct TaskStore: Sendable {
     let directory: URL
 
+    private static let cache = Mutex<TaskStore?>(nil)
+
     static func shared() throws -> TaskStore {
+        if let store = cache.withLock({ $0 }),
+           FileManager.default.fileExists(atPath: store.directory.path) {
+            return store
+        }
         guard let container = FileManager.default.containerURL(
             forSecurityApplicationGroupIdentifier: GlassList.group
         ) else {
@@ -77,7 +93,9 @@ struct TaskStore: Sendable {
 
         let directory = container.appending(path: "Tasks", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        return TaskStore(directory: directory)
+        let store = TaskStore(directory: directory)
+        cache.withLock { $0 = store }
+        return store
     }
 
     private var file: URL {
@@ -93,37 +111,57 @@ struct TaskStore: Sendable {
     }
 
     func load() throws -> [Todo] {
-        try read(file, default: [])
+        try loadTasks().tasks
+    }
+
+    /// `recovered` is true when the list file was damaged and only part of it (or nothing) could be read.
+    /// Call `update { _ in }` to back up the damaged file and write a clean copy.
+    func loadTasks() throws -> (tasks: [Todo], recovered: Bool) {
+        let result = try read(file, default: [], recover: Self.salvageTasks)
+        return (result.value, result.recovered)
     }
 
     func loadDetailColors() throws -> DetailColors {
-        try read(colorsFile, default: DetailColors())
+        try read(colorsFile, default: DetailColors(), recover: { _ in DetailColors() }).value
     }
 
     func loadDisplaySettings() throws -> TaskDisplaySettings {
-        try read(displaySettingsFile, default: TaskDisplaySettings())
+        try read(displaySettingsFile, default: TaskDisplaySettings(), recover: { _ in TaskDisplaySettings() }).value
     }
 
-    private func read<Value: Decodable>(_ file: URL, default defaultValue: Value) throws -> Value {
+    private static func salvageTasks(_ data: Data) -> [Todo] {
+        ((try? JSONDecoder().decode([LossyTodo].self, from: data)) ?? []).compactMap(\.value)
+    }
+
+    private func read<Value: Decodable>(
+        _ file: URL, default defaultValue: Value, recover: (Data) -> Value
+    ) throws -> (value: Value, recovered: Bool) {
+        let data: Data
         do {
-            return try JSONDecoder().decode(Value.self, from: Data(contentsOf: file))
+            data = try Data(contentsOf: file)
         } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
-            return defaultValue
+            return (defaultValue, false)
+        }
+        do {
+            return (try JSONDecoder().decode(Value.self, from: data), false)
+        } catch {
+            return (recover(data), true)
         }
     }
 
     @discardableResult
     func update(_ edit: (inout [Todo]) -> Void) throws -> [Todo] {
-        try update(file, lock: "list.lock", default: [], edit)
+        try update(file, lock: "list.lock", default: [], recover: Self.salvageTasks, edit)
     }
 
     @discardableResult
     func updateDetailColors(_ edit: (inout DetailColors) -> Void) throws -> DetailColors {
-        try update(colorsFile, lock: "detail-colors.lock", default: DetailColors(), edit)
+        try update(colorsFile, lock: "detail-colors.lock", default: DetailColors(), recover: { _ in DetailColors() }, edit)
     }
 
     func updateDisplaySettings(_ edit: (inout TaskDisplaySettings) -> Void) throws -> TaskDisplaySettings {
-        try update(displaySettingsFile, lock: "display-settings.lock", default: TaskDisplaySettings(), edit)
+        try update(displaySettingsFile, lock: "display-settings.lock", default: TaskDisplaySettings(),
+                   recover: { _ in TaskDisplaySettings() }, edit)
     }
 
     // Lock a separate file so atomic replacements never replace the lock itself.
@@ -131,6 +169,7 @@ struct TaskStore: Sendable {
         _ file: URL,
         lock lockName: String,
         default defaultValue: Value,
+        recover: (Data) -> Value,
         _ edit: (inout Value) -> Void
     ) throws -> Value {
         let lock = directory.appending(path: lockName)
@@ -138,15 +177,31 @@ struct TaskStore: Sendable {
         defer { close(fd) }
         _ = try checkedPOSIX { flock(fd, LOCK_EX) }
 
-        var value = try read(file, default: defaultValue)
+        var (value, recovered) = try read(file, default: defaultValue, recover: recover)
         let previous = value
         edit(&value)
-        if value != previous {
+        if recovered {
+            try backUpDamagedFile(file)
+        }
+        if recovered || value != previous {
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.sortedKeys]
             try encoder.encode(value).write(to: file, options: .atomic)
         }
         return value
+    }
+
+    /// Keeps the unreadable original next to the list, e.g. `list.damaged-20261124-172900.json`.
+    private func backUpDamagedFile(_ file: URL) throws {
+        let stamp = Date.now.formatted(.verbatim(
+            "\(year: .defaultDigits)\(month: .twoDigits)\(day: .twoDigits)-\(hour: .twoDigits(clock: .twentyFourHour, hourCycle: .zeroBased))\(minute: .twoDigits)\(second: .twoDigits)",
+            locale: Locale(identifier: "en_US_POSIX"), timeZone: .current, calendar: Calendar(identifier: .gregorian)
+        ))
+        let name = file.deletingPathExtension().lastPathComponent
+        let backup = directory.appending(path: "\(name).damaged-\(stamp).json")
+        if !FileManager.default.fileExists(atPath: backup.path) {
+            try FileManager.default.copyItem(at: file, to: backup)
+        }
     }
 
     private func checkedPOSIX(_ call: () -> Int32) throws -> Int32 {

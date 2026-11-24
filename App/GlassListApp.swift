@@ -15,7 +15,7 @@ struct GlassListApp: App {
     @State private var windowDock = WindowDock()
 
     var body: some Scene {
-        Window("一个完美的todolist", id: Self.listWindowID) {
+        Window("一个完美的todolistG", id: Self.listWindowID) {
             TaskListView()
                 .environment(model)
                 .environment(windowDock)
@@ -45,7 +45,7 @@ struct GlassListApp: App {
             GlassListMenu(windowDock: windowDock)
                 .environment(updates)
         } label: {
-            Label("一个完美的todolist", systemImage: updates.available == nil ? "checkmark.square" : "arrow.down.circle")
+            Label("一个完美的todolistG", systemImage: updates.available == nil ? "checkmark.square" : "arrow.down.circle")
         }
     }
 }
@@ -56,7 +56,7 @@ private struct GlassListMenu: View {
     let windowDock: WindowDock
 
     var body: some View {
-        Button("打开一个完美的todolist") {
+        Button("打开一个完美的todolistG") {
             if !windowDock.bringMainWindowForward() {
                 NSApp.activate()
                 openWindow(id: GlassListApp.listWindowID)
@@ -64,11 +64,11 @@ private struct GlassListMenu: View {
         }
         Divider()
         if let update = updates.available {
-            Link(update.downloadURL == nil ? "查看 \(update.version) 发布页" : "下载一个完美的todolist \(update.version)",
+            Link(update.downloadURL == nil ? "查看 \(update.version) 发布页" : "下载一个完美的todolistG \(update.version)",
                  destination: update.destination)
             Divider()
         }
-        Button("退出一个完美的todolist") {
+        Button("退出一个完美的todolistG") {
             NSApp.terminate(nil)
         }
     }
@@ -82,7 +82,13 @@ private final class GlassListLifecycle: NSObject, NSApplicationDelegate, UNUserN
     func userNotificationCenter(
         _ center: UNUserNotificationCenter, willPresent notification: UNNotification
     ) async -> UNNotificationPresentationOptions {
-        [.banner, .sound]
+        // A task may have been completed or deleted (e.g. from the widget) after its reminder was scheduled.
+        if let id = TaskReminders.taskID(fromNotification: notification.request.identifier),
+           let tasks = try? TaskStore.shared().load(),
+           !tasks.contains(where: { $0.id == id && !$0.isDone }) {
+            return []
+        }
+        return [.banner, .sound]
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

@@ -189,7 +189,7 @@ final class WindowDock: NSObject {
             backing: .buffered,
             defer: false
         )
-        panel.title = "一个完美的todolist侧边标签"
+        panel.title = "一个完美的todolistG侧边标签"
         panel.level = .floating
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
         panel.hidesOnDeactivate = false
@@ -376,9 +376,15 @@ final class WindowDock: NSObject {
 
     @objc private func screenChanged() {
         guard edge != nil else { return }
-        screen = NSScreen.screens.first(where: { $0 == screen })
+        // NSScreen objects can be recreated when displays change, so match by display number.
+        let number = screen.flatMap { Self.displayNumber(of: $0) }
+        screen = NSScreen.screens.first(where: { number != nil && Self.displayNumber(of: $0) == number })
             ?? availableMainWindow?.screen ?? NSScreen.main
         reposition()
+    }
+
+    private static func displayNumber(of screen: NSScreen) -> UInt32? {
+        (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value
     }
 }
 
@@ -452,7 +458,7 @@ private final class DockTabView: NSView {
         toolTip = "移入展开 · 上下拖动"
         setAccessibilityElement(true)
         setAccessibilityRole(.button)
-        setAccessibilityLabel("展开一个完美的todolist")
+        setAccessibilityLabel("展开一个完美的todolistG")
         observeColor()
     }
 

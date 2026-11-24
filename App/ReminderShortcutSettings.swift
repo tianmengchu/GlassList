@@ -82,7 +82,7 @@ final class ReminderShortcutSettings {
             }
         }
     }
-    @ObservationIgnored private var widgetRefresh: Task<Void, Never>?
+    @ObservationIgnored private var colorSave: Task<Void, Never>?
     var items: [ReminderShortcut] {
         didSet {
             if let data = try? JSONEncoder().encode(items) {
@@ -115,19 +115,20 @@ final class ReminderShortcutSettings {
     }
 
     func updateColor(_ selection: Color, at keyPath: WritableKeyPath<DetailColors, DetailColor>) {
-        guard let selected = DetailColor(selection) else { return }
-        do {
-            colors = try TaskStore.shared().updateDetailColors { $0[keyPath: keyPath] = selected }
-            colorSaveFailed = false
-            widgetRefresh?.cancel()
-            widgetRefresh = Task {
-                try? await Task.sleep(for: .milliseconds(350))
-                if !Task.isCancelled {
-                    WidgetCenter.shared.reloadTimelines(ofKind: GlassList.widgetKind)
-                }
+        guard let selected = DetailColor(selection), colors[keyPath: keyPath] != selected else { return }
+        colors[keyPath: keyPath] = selected
+        // The color picker reports every drag step; write the file and refresh widgets once it settles.
+        colorSave?.cancel()
+        colorSave = Task { [colors] in
+            try? await Task.sleep(for: .milliseconds(350))
+            guard !Task.isCancelled else { return }
+            do {
+                try TaskStore.shared().updateDetailColors { $0 = colors }
+                colorSaveFailed = false
+                WidgetCenter.shared.reloadTimelines(ofKind: GlassList.widgetKind)
+            } catch {
+                colorSaveFailed = true
             }
-        } catch {
-            colorSaveFailed = true
         }
     }
 

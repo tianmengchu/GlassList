@@ -9,7 +9,11 @@ final class TaskListModel {
     private(set) var tasks: [Todo] = []
     private(set) var loadFailed = false
     var showSaveError = false
+    /// Set when a damaged list file was repaired; the original is kept as `list.damaged-*.json`.
+    var showRecoveryNotice = false
     @ObservationIgnored private var watcher: DispatchSourceFileSystemObject?
+    @ObservationIgnored private var pendingReload: DispatchWorkItem?
+    @ObservationIgnored private var hasLoaded = false
 
     func homeTasks(at date: Date, includeCompleted: Bool, retentionDays: Int) -> [Todo] {
         let pending = tasks.filter { !$0.isDone }
@@ -18,24 +22,33 @@ final class TaskListModel {
         return pending + recent.sorted { ($0.completedAt ?? .distantPast) > ($1.completedAt ?? .distantPast) }
     }
 
-    func reload(refreshWidget: Bool = false) {
+    /// - Parameter syncReminders: pass `false` for file-change reloads; reminders are then
+    ///   re-synced only when the list actually changed.
+    func reload(refreshWidget: Bool = false, syncReminders: Bool = true) {
         do {
             let store = try TaskStore.shared()
             watchDirectory(store.directory)
-            let loaded = try store.load()
-            if loaded.contains(where: { $0.isDone && $0.completedAt == nil }) {
+            let (loaded, recovered) = try store.loadTasks()
+            let next: [Todo]
+            if recovered || loaded.contains(where: { $0.isDone && $0.completedAt == nil }) {
                 let date = Date.now
-                tasks = try store.update { items in
+                next = try store.update { items in
                     for index in items.indices where items[index].isDone && items[index].completedAt == nil {
                         items[index].completedAt = date
                     }
                 }
+                if recovered { showRecoveryNotice = true }
             } else {
-                tasks = loaded
+                next = loaded
             }
+            let changed = !hasLoaded || next != tasks
+            if changed { tasks = next }
+            hasLoaded = true
             loadFailed = false
-            Task { await TaskReminders.shared.sync() }
-            if refreshWidget {
+            if syncReminders || changed {
+                Task { await TaskReminders.shared.sync() }
+            }
+            if refreshWidget || recovered {
                 WidgetCenter.shared.reloadTimelines(ofKind: GlassList.widgetKind)
             }
         } catch {
@@ -116,11 +129,25 @@ final class TaskListModel {
             queue: .main
         )
         source.setEventHandler { [weak self] in
-            self?.reload()
+            self?.scheduleReloadFromDisk()
         }
         source.setCancelHandler { close(descriptor) }
         watcher = source
         source.activate()
+    }
+
+    /// Atomic writes produce several directory events in a row (temp file, rename, lock file),
+    /// so coalesce them into one read.
+    private func scheduleReloadFromDisk() {
+        pendingReload?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            MainActor.assumeIsolated {
+                self?.pendingReload = nil
+                self?.reload(syncReminders: false)
+            }
+        }
+        pendingReload = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
     }
 
     deinit {

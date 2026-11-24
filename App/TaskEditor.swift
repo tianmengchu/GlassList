@@ -783,28 +783,59 @@ struct TaskDueCountdown: View {
     let date: Date
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 1)) { context in
-            let seconds = Int(max(0, ceil(date.timeIntervalSince(context.date))))
+        // The view only re-renders once a minute (and at the due moment); the seconds are drawn
+        // by the system timer text, so many countdowns stay cheap.
+        TimelineView(CountdownSchedule(due: date)) { context in
+            let remaining = date.timeIntervalSince(context.date)
             VStack(alignment: .trailing, spacing: 3) {
                 Text("倒计时").font(.system(size: 10, weight: .medium)).foregroundStyle(.secondary)
-                Text(label(seconds))
-                    .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                    .monospacedDigit()
-                    .foregroundStyle(seconds == 0 ? Color.red : (palette?.accent.swatch ?? .accentColor))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.75)
-                    .contentTransition(.identity)
+                Group {
+                    if remaining <= 0 {
+                        Text("已到期")
+                    } else if remaining >= 86_400 {
+                        Text(dayLabel(Int(remaining)))
+                    } else {
+                        Text(timerInterval: context.date...date, countsDown: true, showsHours: true)
+                    }
+                }
+                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                .monospacedDigit()
+                .foregroundStyle(remaining <= 0 ? Color.red : (palette?.accent.swatch ?? .accentColor))
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+                .contentTransition(.identity)
             }
             .accessibilityElement(children: .combine)
         }
     }
 
-    private func label(_ seconds: Int) -> String {
-        guard seconds > 0 else { return "已到期" }
-        if seconds >= 86_400 {
-            return String(format: "%d天 %02d:%02d:%02d",
-                          seconds / 86_400, seconds / 3_600 % 24, seconds / 60 % 60, seconds % 60)
+    private func dayLabel(_ seconds: Int) -> String {
+        String(format: "%d天 %02d:%02d", seconds / 86_400, seconds / 3_600 % 24, seconds / 60 % 60)
+    }
+}
+
+/// Fires at each minute boundary until `due`, plus exactly at `due`, then stops.
+private struct CountdownSchedule: TimelineSchedule {
+    let due: Date
+
+    func entries(from startDate: Date, mode: TimelineScheduleMode) -> AnyIterator<Date> {
+        var cursor: Date? = startDate
+        var emittedStart = false
+        return AnyIterator {
+            guard let current = cursor else { return nil }
+            if !emittedStart {
+                emittedStart = true
+                if current >= due { cursor = nil }
+                return current
+            }
+            let nextMinute = Date(timeIntervalSinceReferenceDate:
+                (current.timeIntervalSinceReferenceDate / 60).rounded(.down) * 60 + 60)
+            if nextMinute >= due {
+                cursor = nil
+                return due
+            }
+            cursor = nextMinute
+            return nextMinute
         }
-        return String(format: "%02d:%02d:%02d", seconds / 3_600, seconds / 60 % 60, seconds % 60)
     }
 }

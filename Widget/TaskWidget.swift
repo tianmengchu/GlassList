@@ -57,7 +57,15 @@ struct TaskProvider: TimelineProvider {
         do {
             let store = try TaskStore.shared()
             let tasks = try store.load()
-            let pending = tasks.filter { !$0.isDone }
+            // Soonest first (overdue at the top), undated tasks last; ties keep the list order.
+            let pending = tasks.filter { !$0.isDone }.enumerated().sorted { lhs, rhs in
+                switch (lhs.element.scheduledDate, rhs.element.scheduledDate) {
+                case let (left?, right?) where left != right: left < right
+                case (.some, nil): true
+                case (nil, .some): false
+                default: lhs.offset < rhs.offset
+                }
+            }.map(\.element)
             return TaskEntry(
                 rows: Array(pending.prefix(family == .systemLarge ? 6 : 2)),
                 pendingCount: pending.count,
@@ -131,7 +139,7 @@ struct TaskWidgetView: View {
                 .widgetAccentable()
                 .accessibilityHidden(true)
 
-            Text("一个完美的todolist")
+            Text("一个完美的todolistG")
                 .font(.system(size: 12, weight: .semibold))
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
@@ -280,7 +288,7 @@ struct TaskWidget: Widget {
         StaticConfiguration(kind: GlassList.widgetKind, provider: TaskProvider()) { entry in
             TaskWidgetView(entry: entry)
         }
-        .configurationDisplayName("一个完美的todolist")
+        .configurationDisplayName("一个完美的todolistG")
         .description("在桌面查看待办、时间和备注，并直接勾选完成。")
         .containerBackgroundRemovable(true)
         .contentMarginsDisabled()
